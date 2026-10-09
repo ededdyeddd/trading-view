@@ -44,7 +44,7 @@ export function App() {
             </div>
           </div>
           {ticketOpen && (
-            <div className={styles.ticket} style={{ width: ticketWidth }}>
+            <div className={styles.ticket} style={{ width: ticketWidth + 1 }}>
               <ResizeHandle
                 direction="horizontal"
                 className={styles.ticketHandle}

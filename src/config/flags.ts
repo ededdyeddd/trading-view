@@ -26,3 +26,9 @@ export const DEBUG = params.get('debug') === '1';
 export const FINNHUB_KEY: string | undefined = import.meta.env.VITE_FINNHUB_KEY || undefined;
 
 export const THEME: 'light' | 'dark' = params.get('theme') === 'dark' ? 'dark' : 'light';
+
+/** Atom gallery for the redesigned panel (?sandbox=1). */
+export const SANDBOX: 'atoms' | 'panel' | null = params.get('sandbox') === '1' ? 'atoms' : params.get('sandbox') === 'panel' ? 'panel' : null;
+
+/** Freeze simulated prices (AAPL 201.56 / 201.57) for pixel comparisons (?freeze=1). */
+export const FREEZE = params.get('freeze') === '1';

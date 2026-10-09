@@ -1,10 +1,22 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import { logEvent, logFieldChange } from '../analytics/eventLog';
-import { getSpec, qtyPrecision, type SymbolSpec } from '../config/symbols';
-import type { TimeInForce } from '../engine/types';
+import { PANEL_VARIANT, type PanelVariant } from '../config/flags';
+import { getSpec, pricePrecision, qtyPrecision, type SymbolSpec } from '../config/symbols';
+import type { EngineEvent, TimeInForce } from '../engine/types';
 import { priceInput } from '../lib/format';
-import { marketRef, type ExitKind, type ExitUnit, type OrderType, type QtyUnit, type Side } from '../lib/orderMath';
+import {
+  defaultExitPrice,
+  describeExit,
+  exitValueInUnit,
+  marketRef,
+  type ExitKind,
+  type ExitLevel,
+  type ExitUnit,
+  type OrderType,
+  type QtyUnit,
+  type Side,
+} from '../lib/orderMath';
 import { useMarketStore } from '../market/marketStore';
 import { now, useAccountSummary, useTradingStore } from '../store/tradingStore';
 import { uiEvents, useUiStore } from '../store/uiStore';
@@ -17,7 +29,25 @@ function defaultQty(spec: SymbolSpec): string {
   return '1';
 }
 
-function initialState(symbol: string): TicketState {
+/** Redesign defaults when a level is switched on: SL 2% and TP 4% from entry. */
+export const NEW_EXIT_DEFAULT_PERCENT: Record<ExitKind, number> = { sl: 2, tp: 4 };
+
+function initialState(symbol: string, variant: PanelVariant = PANEL_VARIANT): TicketState {
+  if (variant === 'new') {
+    return {
+      symbol,
+      side: 'buy',
+      type: 'market',
+      priceInput: '',
+      qtyUnit: 'units',
+      qtyInput: '',
+      sl: { enabled: false, unit: 'price', input: '', touched: true },
+      tp: { enabled: false, unit: 'price', input: '', touched: true },
+      tif: 'week',
+      gtdDate: '',
+      fillOutsideRth: false,
+    };
+  }
   return {
     symbol,
     side: 'buy',
@@ -43,15 +73,30 @@ type Actions = {
   ensurePrice: () => void;
   setQtyInput: (text: string) => void;
   setQtyUnit: (unit: QtyUnit, view: TicketView) => void;
-  setExitEnabled: (kind: ExitKind, enabled: boolean) => void;
+  /** In the redesign, switching a level on fills the default (SL −2% / TP +4%) and switching off clears it. */
+  setExitEnabled: (kind: ExitKind, enabled: boolean, view?: TicketView) => void;
+  /** After a submit the redesign keeps side, type and units but clears the quantity. */
+  clearQty: () => void;
   setExitInput: (kind: ExitKind, text: string) => void;
   setExitUnit: (kind: ExitKind, unit: ExitUnit, view: TicketView) => void;
   setTif: (tif: TimeInForce) => void;
   setGtdDate: (date: string) => void;
   setFillOutsideRth: (v: boolean) => void;
   /** Submits the derived draft to the paper engine. */
-  submit: (view: TicketView) => boolean;
+  submit: (view: TicketView, opts?: { silent?: boolean }) => EngineEvent[];
 };
+
+/** Text a level has in an input unit: prices to tick precision, ticks as integers, the rest to 2 decimals. */
+export function exitInputText(level: ExitLevel, unit: ExitUnit, spec: SymbolSpec): string {
+  const v = exitValueInUnit(level, unit);
+  if (unit === 'price') return v.toFixed(pricePrecision(spec));
+  if (unit === 'ticks') return String(v);
+  return v.toFixed(2);
+}
+
+function accountBalance(): number {
+  return useTradingStore.getState().engine.balance;
+}
 
 export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   ...initialState(useUiStore.getState().symbol),
@@ -59,6 +104,17 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   setSymbol: (symbol) => {
     if (symbol === get().symbol) return;
     const spec = getSpec(symbol);
+    if (PANEL_VARIANT === 'new') {
+      // Levels are prices of the previous symbol — start the new one clean, keep side/type/units.
+      set((s) => ({
+        symbol,
+        priceInput: '',
+        qtyInput: '',
+        sl: { ...s.sl, enabled: false, input: '' },
+        tp: { ...s.tp, enabled: false, input: '' },
+      }));
+      return;
+    }
     set((s) => ({
       symbol,
       priceInput: '',
@@ -110,10 +166,23 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     set({ qtyUnit: unit, qtyInput: text });
     logEvent('unit_change', { field: 'quantity', unit });
   },
-  setExitEnabled: (kind, enabled) => {
-    set((s) => ({ [kind]: { ...s[kind], enabled } }) as Partial<TicketState>);
+  setExitEnabled: (kind, enabled, view) => {
+    const s = get();
+    let input = s[kind].input;
+    if (PANEL_VARIANT === 'new') {
+      input = '';
+      if (enabled && view?.entry) {
+        const spec = getSpec(s.symbol);
+        const price = defaultExitPrice(kind, s.side, view.entry, NEW_EXIT_DEFAULT_PERCENT[kind], spec.tickSize);
+        const qty = view.qty.units > 0 ? view.qty.units : 1;
+        const lvl = describeExit(kind, s.side, view.entry, qty, price, accountBalance(), spec);
+        input = exitInputText(lvl, s[kind].unit, spec);
+      }
+    }
+    set({ [kind]: { ...s[kind], enabled, input, touched: true } } as Partial<TicketState>);
     logEvent('toggle_change', { field: kind, enabled });
   },
+  clearQty: () => set({ qtyInput: '' }),
   setExitInput: (kind, text) => {
     set((s) => ({ [kind]: { ...s[kind], input: text, touched: true } }) as Partial<TicketState>);
     logFieldChange(kind, text);
@@ -124,14 +193,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     if (unit === ex.unit) return;
     const lvl = view[kind].level;
     const spec = getSpec(s.symbol);
-    let text = '';
-    if (lvl && !lvl.invalid) {
-      if (unit === 'price') text = priceInput(lvl.price, spec);
-      else if (unit === 'ticks') text = String(lvl.ticks);
-      else if (unit === 'percent') text = lvl.percent.toFixed(2);
-      else if (unit === 'money') text = Math.abs(lvl.money).toFixed(2);
-      else text = lvl.balancePercent.toFixed(2);
-    }
+    const text = lvl && !lvl.invalid ? exitInputText(lvl, unit, spec) : '';
     set({ [kind]: { ...ex, unit, input: text, touched: true } } as Partial<TicketState>);
     logEvent('unit_change', { field: kind, unit });
   },
@@ -147,13 +209,13 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     set({ fillOutsideRth });
     logEvent('toggle_change', { field: 'fillOutsideRth', enabled: fillOutsideRth });
   },
-  submit: (view) => {
-    if (!view.draft) return false;
+  submit: (view, opts) => {
+    if (!view.draft) return [];
     logEvent('submit', { draft: view.draft });
-    const events = useTradingStore.getState().placeOrder(view.draft);
+    const events = useTradingStore.getState().placeOrder(view.draft, opts);
     const rejected = events.find((e) => e.type === 'rejected');
     logEvent('submit_result', { result: rejected ? 'rejected' : 'accepted', message: rejected?.message, orderId: events[0]?.order?.id });
-    return !rejected;
+    return events;
   },
 }));
 

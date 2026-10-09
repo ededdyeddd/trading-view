@@ -9,6 +9,7 @@ import { parseNum, priceInput as fmtPriceInput } from '../lib/format';
 import {
   checkPrice,
   describeExit,
+  exceedsMargin,
   exitDirection,
   marginFor,
   marketRef,
@@ -149,6 +150,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     riskReward: rr,
     expiresAt,
     availableFunds: ctx.availableFunds,
+    marginExceeded: units > 0 && exceedsMargin(qty.margin, ctx.availableFunds),
     canSubmit: draft !== null,
     disabledReason: reason,
     disabledText: reason ? disabledText(reason, state, sl, tp) : null,

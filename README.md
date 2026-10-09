@@ -19,6 +19,9 @@ npm run build      # typecheck + production build
 | `?panel=` | `current`, `new` | `current` | Order panel variant. `current` is a copy of production; `new` is the redesign (step 2) |
 | `?debug=1` | — | off | Hidden debug menu (bug button bottom-left): export the event log as JSON, fast-forward the clock to expire orders, drop live feeds, reset the account |
 | `?theme=dark` | — | light | Dark theme (tokens only, not polished) |
+| `?freeze=1` | — | off | Freezes sim prices (AAPL 201.56 / 201.57) for comparing against Figma |
+| `?sandbox=1` | — | — | Gallery of the new panel's atoms in every state |
+| `?sandbox=panel&panel=new&freeze=1` | `&h=799` | — | The panel alone at Figma frame size, for 1:1 screenshots |
 
 The same settings can be set in `.env.local` (see `.env.example`): `VITE_FEED`, `VITE_PANEL`, `VITE_FINNHUB_KEY`. The URL takes priority over `.env`.
 
@@ -46,7 +49,8 @@ src/
   lib/           orderMath.ts — pure calculations (value, margin, tick, SL/TP in every unit, size from risk, R:R); format.ts
   engine/        paperEngine.ts — paper trading engine with no UI dependency (orders, brackets, TIF, positions, account)
   order-ticket/  headless ticket model: TicketState → deriveTicket() → TicketView + OrderDraft; useOrderTicket()
-  order-panel/   current/ — copy of the production panel; new/ — the redesign (step 2); index.tsx picks via ?panel=
+  order-panel/   current/ — copy of the production panel; new/ — the redesign (2a: Market) with ui/ atoms,
+                 presenters.ts (strings for the Figma tables) and Sandbox; index.tsx picks via ?panel=
   store/         uiStore (layout, symbol, ticket), tradingStore (engine + localStorage + toasts)
   analytics/     ticket event log for the usability test
   layout/        toolbars, chart, watchlist, bottom Paper Trading panel, toasts, debug menu

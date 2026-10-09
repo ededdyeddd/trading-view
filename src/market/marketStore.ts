@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { FEED_MODE, FINNHUB_KEY, type FeedMode } from '../config/flags';
+import { FEED_MODE, FINNHUB_KEY, FREEZE, type FeedMode } from '../config/flags';
 import { SYMBOLS, getSpec, type FeedKind } from '../config/symbols';
 import { BinanceProvider } from './binanceProvider';
 import { FinnhubProvider } from './finnhubProvider';
@@ -37,7 +37,7 @@ export const useMarketStore = create<MarketState>(() => ({
 // Routing + fallback
 // ---------------------------------------------------------------------------
 
-const sim = new SimProvider();
+const sim = new SimProvider({ frozen: FREEZE });
 const binance = new BinanceProvider((symbol, reason) => fallBack(symbol, reason));
 const finnhub = FINNHUB_KEY ? new FinnhubProvider(FINNHUB_KEY, (symbol, reason) => fallBack(symbol, reason)) : null;
 

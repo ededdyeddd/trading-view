@@ -17,7 +17,10 @@ import { onQuotes, useMarketStore } from '../market/marketStore';
 const STORAGE_KEY = 'paper-trading:v1';
 const LOG_LIMIT = 500;
 
-export type Toast = EngineEvent & { id: number };
+export type ToastAction = { label: string; run: () => void };
+/** Engine notification or a panel-specific toast (title + optional action button). */
+export type Toast = EngineEvent & { id: number; title?: string; action?: ToastAction; ttl?: number };
+export type ToastInput = Omit<Toast, 'id'>;
 
 type TradingState = {
   engine: EngineState;
@@ -27,7 +30,11 @@ type TradingState = {
   /** Debug time travel offset (ms) applied to the engine clock. */
   clockOffset: number;
 
-  placeOrder: (draft: OrderDraft) => EngineEvent[];
+  /** `silent` skips the default engine toasts (the caller shows its own). */
+  placeOrder: (draft: OrderDraft, opts?: { silent?: boolean }) => EngineEvent[];
+  /** Undo a filled market entry: cancels its bracket legs and sends the opposite market order. */
+  reverseTrade: (orderId: string) => EngineEvent[];
+  pushToast: (toast: ToastInput) => void;
   cancelOrder: (id: string) => void;
   modifyOrder: (id: string, patch: OrderPatch) => void;
   closePosition: (symbol: string) => void;
@@ -66,14 +73,20 @@ export function now(): number {
 const persisted = load();
 
 /** Applies an engine result: state, notifications log, toasts, persistence. */
-function commit(r: EngineResult): EngineEvent[] {
+function commit(r: EngineResult, opts: { silent?: boolean } = {}): EngineEvent[] {
   const store = useTradingStore;
-  const toasts = r.events.map((e) => ({ ...e, id: toastSeq++ }));
   const log = [...store.getState().log, ...r.events].slice(-LOG_LIMIT);
-  store.setState((s) => ({ engine: r.state, log, toasts: [...s.toasts, ...toasts].slice(-6) }));
-  toasts.forEach((t) => setTimeout(() => store.getState().dismissToast(t.id), TOAST_TTL));
+  store.setState({ engine: r.state, log });
+  if (!opts.silent) r.events.forEach((e) => showToast(e));
   save(r.state, log);
   return r.events;
+}
+
+function showToast(t: ToastInput) {
+  const store = useTradingStore;
+  const toast: Toast = { ...t, id: toastSeq++ };
+  store.setState((s) => ({ toasts: [...s.toasts, toast].slice(-6) }));
+  setTimeout(() => store.getState().dismissToast(toast.id), toast.ttl ?? TOAST_TTL);
 }
 
 export const useTradingStore = create<TradingState>((set, get) => {
@@ -85,7 +98,23 @@ export const useTradingStore = create<TradingState>((set, get) => {
     toasts: [],
     clockOffset: 0,
 
-    placeOrder: (draft) => commit(enginePlace(get().engine, draft, quotes(), now())),
+    placeOrder: (draft, opts) => commit(enginePlace(get().engine, draft, quotes(), now()), opts),
+    reverseTrade: (orderId) => {
+      const entry = get().engine.orders.find((o) => o.id === orderId);
+      if (!entry || entry.status !== 'filled') return [];
+      logEvent('position_close', { symbol: entry.symbol, fromOrderId: orderId });
+      let state = get().engine;
+      const events: EngineEvent[] = [];
+      for (const leg of state.orders.filter((o) => o.parentId === orderId && o.status === 'working')) {
+        const r = engineCancel(state, leg.id, now());
+        state = r.state;
+        events.push(...r.events);
+      }
+      const opposite: OrderDraft = { symbol: entry.symbol, side: entry.side === 'buy' ? 'sell' : 'buy', type: 'market', qty: entry.qty, tif: 'day' };
+      const r = enginePlace(state, opposite, quotes(), now());
+      return commit({ state: r.state, events: [...events, ...r.events] }, { silent: true });
+    },
+    pushToast: (toast) => showToast(toast),
     cancelOrder: (id) => {
       logEvent('order_cancel', { orderId: id });
       commit(engineCancel(get().engine, id, now()));

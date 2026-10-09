@@ -1,0 +1,54 @@
+.page {
+  height: 100vh;
+  overflow: auto;
+  padding: 24px 32px 64px;
+  background: var(--color-bg-app);
+}
+
+.page h1 {
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+.group {
+  margin-bottom: 28px;
+}
+
+.group h2 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-text-secondary);
+  margin: 0 0 8px;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.cell {
+  width: 320px;
+  background: var(--nt-bg);
+  border-radius: 8px;
+  overflow: visible;
+}
+
+.cellTitle {
+  padding: 8px 16px 0;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.cellBody {
+  padding: 12px 16px 16px;
+}
+
+.link {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--nt-link);
+}

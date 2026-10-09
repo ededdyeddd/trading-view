@@ -83,6 +83,8 @@ export type TicketView = {
   riskReward: number | null;
   expiresAt: number | null;
   availableFunds: number;
+  /** Required margin is above available funds. Production submits anyway (engine rejects); the redesign blocks. */
+  marginExceeded: boolean;
   canSubmit: boolean;
   disabledReason: DisabledReason | null;
   /** Human text for disabledReason in the production wording. */

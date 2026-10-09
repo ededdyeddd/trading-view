@@ -60,3 +60,49 @@ Sources: the Alloy snapshot (the main visual reference, a static DOM of one stat
 ## Figma (step 2) — what the model already covers
 
 The calculation tables from the annotations (quantity in 5 units, Limit offset from Ask, SL/TP in 5 units, "from entry", Real risk with rounding down, R:R) are covered by `orderMath` and `deriveTicket` tests using the same numbers (entry 201.57, balance 99,953.90, SL 197.50 → 98 / 122 shares, 398.86 / 496.54 USD …). The disabled-button texts from the mockups ("Enter quantity to buy AAPL", "Enter price and quantity", "Set stop loss to calculate size") are available in `TicketView.disabledText`.
+
+---
+
+# Step 2a — new panel (`?panel=new`), Market
+
+Sources: the 2a prompt and Figma (`4086:71721` Market · Empty, `4086:72133` Market · Filled, DS error state `4106:78213`). There is no `docs/PRD.md` in the repo; we agreed to work from the prompt and Figma. Frame screenshots are in `reference/figma/`, ours are in `docs/screenshots/new/`.
+
+## Decisions agreed with the designer
+
+- **Field radius** is 6 px everywhere (in Empty the quantity field is 8, everywhere else 6).
+- **Active Sell** mirrors Buy: solid `#f23645` with white text (not in the mockup).
+- **Field error**: the DS state is a 2 px `#f23645` border with no icon, plus red caption text under the field that repeats the button's reason. Warning is the same with an orange border (`#f57c00`) and caption (`#e65100`); in 2a it only shows in the sandbox.
+- **New-panel defaults**: quantity is empty; enabling a level fills SL −2% / TP +4% from entry (rounded to the tick); disabling clears it. `current` keeps its own defaults (1 share, TP 75 / SL 25 ticks).
+- **Toasts**: in `new`, a market fill shows "Bought 100 AAPL at 201.57" with a **Close position** button for 8 s. In `current`, toasts stay as in production.
+- **Time in force**: English, format `Week · Oct 16`, where the date is today + 7 days (Figma shows Oct 15 because the mockup was made on Oct 8). Periods: Day / Week / Month / GTD; 2a uses Week and the row does not expand.
+- **Logo**: the mockup has the TradingView logo, which we don't copy, so we show a generated letter. The "≈" status icon (data not official) is drawn with tokens.
+- **Not enough margin** is checked in the ticket model (`view.marginExceeded`), and the button is disabled before submit. In `current`, as in production, the order goes through and the engine rejects it.
+
+## Discrepancies and clarifications
+
+- **SL table, row "Risk % balance 0.41 % → −407.00 USD"**: 0.41 % of 99,953.90 is 409.81 USD, which gives level 197.47 / −409.00 USD. The table numbers come from 197.50 (0.407 %) with the display rounded to 0.41. The tests enter 0.4072 and check that the display reads "0.41 % of balance"; the same applies to TP 0.94 % (0.9434).
+- **Sell**: "mirrors signs" is read as follows. The money of a level keeps its meaning (SL is always −, TP always +), while the caption shows the real price change from entry. For a Sell SL above entry that is "+4.07 (+2.19%) from entry".
+- **"Close position" in the toast** undoes exactly the order that was just sent: it cancels its SL/TP and sends an opposite market order for the same quantity. If the position already existed, the earlier part stays — otherwise the button would close more than the user just bought.
+- **Validation messages**: `Stop loss must be below entry` (without "price"), `Take profit must be above entry`, `Not enough margin`. Check order: quantity → SL → TP → margin. The quantity field shows `Not enough margin · Available … USD`.
+- **Limit / Stop** tabs are visible but do not switch; clicking shows "Limit and Stop are coming soon" (2b). **Risk USD / Risk % balance** in the quantity menu are disabled with the label "Soon". **+ Add level** shows a "Coming soon" tooltip; it appears once at least one level is on (as in Filled; there is none in Empty).
+- **Summary above the button** shows only valid levels and only when the order can be submitted (the table has no summary on errors).
+- **Risk / Reward** reads `1 : 2.32`, with thin spaces around "/" in the label as in the mockup.
+- When the symbol changes, the new panel clears quantity and levels but keeps side, type and units.
+
+## Geometry check (`?sandbox=panel&panel=new&freeze=1`, 320 × 762)
+
+Element y-coordinates match the Figma frames exactly:
+
+| | Figma | Prototype |
+|---|---|---|
+| Order/DOM · Sell/Buy · tabs | 48 · 98 · 166 | 48 · 98 · 166 |
+| Quantity: label · field · caption | 210 · 234 · 268 | 210 · 234 · 268 |
+| Exits · SL label · SL field | 308 · 338 · 364 | 308 · 338 · 364 |
+| Empty: TP label · field · Time in force · Extra | 414 · 440 · 494 · 532 | 414 · 440 · 494 · 532 |
+| Filled: SL caption · TP label · TP field · TP caption | 398 · 430 · 456 · 490 | 398 · 430 · 456 · 490 |
+| Filled: R:R · Add level · Time in force · Extra | 520 · 562 · 600 · 638 | 520 · 562 · 600 · 638 |
+| Footer: block 96, button inside at +36, 16 below | ✓ | ✓ |
+
+Fixed during the check: switch row height (+2 px), "Add level" row height (+3 px), gap between summary and button (8 → 10).
+
+Remaining visual differences (not geometry): the logo (agreed), the system font instead of SF Pro in Figma (identical on macOS), lucide icons instead of TradingView icons.

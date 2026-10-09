@@ -77,6 +77,48 @@
 
   --shadow-popup: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16);
 
+  /* ---- Redesign (order panel `new`), from Figma variables of file e0zJvrcoBdJiypZDxVhY4O ---- */
+  --nt-font-weight-medium: 510;
+  --nt-font-weight-semibold: 590;
+  --nt-tracking-14: -0.154px;
+  --nt-tracking-13: -0.078px;
+  --nt-tracking-16: -0.32px;
+
+  --nt-bg: #ffffff; /* color/background/secondary/inverse */
+  --nt-fill-extra-light: #f2f2f2; /* color/container-fill/primary/neutral-extra-light */
+  --nt-fill-thin: #f9f9f9; /* color/container-fill/primary/neutral-thin */
+  --nt-fill-light: #ebebeb; /* color/container-fill/tertiary/neutral-light */
+  --nt-fill-neutral: #9c9c9c; /* color/container-fill/primary/neutral (switch off) */
+  --nt-fill-extra-bold: #2e2e2e; /* color/container-fill/primary/neutral-extra-bold (switch on) */
+  --nt-fill-hover: #ebebeb;
+  --nt-accent: #2962ff; /* color/container-fill/primary/accent */
+  --nt-accent-hover: #1e53e5;
+  --nt-sell: #f23645;
+  --nt-sell-hover: #cc2f3c;
+
+  --nt-text: #0f0f0f; /* color/content/primary/neutral-bold */
+  --nt-text-semi: #4a4a4a; /* color/content/primary/neutral-semi-bold */
+  --nt-text-secondary: #707070; /* color/content/primary/neutral */
+  --nt-text-inverse: #ffffff; /* color/content/tertiary/inverse */
+  --nt-text-danger: #cc2f3c; /* color/content/primary/danger-semi-bold */
+  --nt-text-success: #06806b; /* color/content/primary/success-semi-bold */
+  --nt-text-warning: #e65100;
+  --nt-link: #2962ff; /* link/primary/default */
+
+  --nt-border: #dbdbdb; /* color/border/secondary/neutral-normal */
+  --nt-border-hover: #b8b8b8;
+  --nt-border-focus: #2962ff;
+  --nt-border-danger: #f23645; /* color/border/primary/danger (DS error state, 2px) */
+  --nt-border-warning: #f57c00;
+
+  --nt-status-bg: #e91e6326; /* color/overlay/negative-2/light */
+  --nt-status-fg: #ad1457; /* color/content/secondary/danger-extra-bold */
+  --nt-shadow-s: 0 0 3px #ebebeb; /* TV Shadow S */
+
+  --nt-radius-field: 6px;
+  --nt-radius-side: 12px;
+  --nt-radius-button: 12px;
+  --nt-radius-footer: 16px;
   color-scheme: light;
 }
 

@@ -1,0 +1,149 @@
+/* Layout of the redesigned ticket — vertical rhythm from Figma 4086:71721 / 4086:72133. */
+
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--nt-bg);
+  color: var(--nt-text);
+  border-radius: inherit;
+  font-feature-settings:
+    'lnum' 1,
+    'tnum' 1;
+}
+
+.px {
+  padding: 0 16px;
+}
+
+/* header: 5px + 38px + 5px */
+.header {
+  flex: none;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+}
+
+.symbol {
+  margin-left: 8px;
+  font-size: 14px;
+  line-height: 18px;
+  letter-spacing: var(--nt-tracking-14);
+  font-weight: var(--nt-font-weight-semibold);
+}
+
+.status {
+  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--nt-status-bg);
+  color: var(--nt-status-fg);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.headerBtn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--nt-text);
+}
+
+.headerBtn:hover {
+  background: var(--nt-fill-extra-light);
+}
+
+.domStub {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--nt-text-secondary);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--nt-border) transparent;
+}
+
+/* gap 16 · BS 52 · gap 16 · tabs 28 */
+.bs {
+  padding-top: 16px;
+}
+
+.typeWrap {
+  position: relative;
+  margin-top: 16px;
+}
+
+.hint {
+  position: absolute;
+  right: 0;
+  top: -26px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--nt-fill-extra-bold);
+  color: var(--nt-text-inverse);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+/* gap 16 · label (18 + 6) · field 34 · caption 4 + 16 */
+.qty {
+  padding-top: 16px;
+}
+
+.qtyLabel {
+  padding-bottom: 6px;
+}
+
+/* sections are separated by 20px */
+.section {
+  padding-top: 20px;
+}
+
+.last {
+  padding-bottom: 16px;
+}
+
+.exits {
+  padding-top: 12px;
+}
+
+.rr {
+  padding-top: 10px;
+}
+
+.addLevel {
+  display: flex;
+  padding-top: 8px;
+}
+
+.extra {
+  padding-top: 12px;
+}
+
+/* pinned footer, p16 */
+.footer {
+  flex: none;
+  padding: 16px;
+  background: var(--nt-bg);
+}

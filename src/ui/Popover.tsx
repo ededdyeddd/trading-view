@@ -18,6 +18,18 @@ export function Popover({ anchor, open, onClose, children, align = 'start', matc
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width?: number } | null>(null);
 
+  const [scrollTick, setScrollTick] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = () => setScrollTick((t) => t + 1);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open]);
+
   useLayoutEffect(() => {
     if (!open || !anchor.current) return;
     const r = anchor.current.getBoundingClientRect();
@@ -29,7 +41,7 @@ export function Popover({ anchor, open, onClose, children, align = 'start', matc
     let top = r.bottom + offset;
     if (top + h > window.innerHeight - 4) top = Math.max(4, r.top - offset - h);
     setPos({ top, left, width: matchWidth ? r.width : undefined });
-  }, [open, anchor, align, matchWidth, offset]);
+  }, [open, anchor, align, matchWidth, offset, scrollTick]);
 
   useEffect(() => {
     if (!open) return;

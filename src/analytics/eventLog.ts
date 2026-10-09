@@ -10,6 +10,7 @@ export type TicketEventType =
   | 'toggle_change'
   | 'submit'
   | 'submit_result'
+  | 'validation_error'
   | 'order_cancel'
   | 'order_modify'
   | 'position_close'

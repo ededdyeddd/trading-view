@@ -83,3 +83,17 @@
   color: var(--color-red);
   flex: none;
 }
+
+.action {
+  align-self: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.action:hover {
+  background: var(--color-bg-hover);
+}

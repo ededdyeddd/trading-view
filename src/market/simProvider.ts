@@ -48,6 +48,8 @@ export type SimOptions = {
   anchors?: Record<string, number>;
   random?: () => number;
   now?: () => number;
+  /** Keep every symbol at its seed quote (screenshot comparisons). */
+  frozen?: boolean;
 };
 
 /**
@@ -59,8 +61,10 @@ export class SimProvider implements MarketDataProvider {
   private rand: () => number;
   private now: () => number;
   private anchors: Record<string, number>;
+  private frozen: boolean;
 
   constructor(opts: SimOptions = {}) {
+    this.frozen = !!opts.frozen;
     this.rand = opts.random ?? Math.random;
     this.now = opts.now ?? Date.now;
     this.anchors = { ...opts.anchors };
@@ -107,6 +111,10 @@ export class SimProvider implements MarketDataProvider {
   /** Advance one tick. Exposed for tests. */
   step(symbol: string): Quote {
     const st = this.state(symbol);
+    if (this.frozen) {
+      st.lastQuote = { ...st.lastQuote, ts: this.now() };
+      return st.lastQuote;
+    }
     const sigma = this.tickSigma(st.spec);
     st.mid = Math.max(st.spec.tickSize * 10, st.mid * (1 + sigma * gauss(this.rand)));
     const size = st.spec.assetClass === 'stock' ? Math.ceil(this.rand() * 300) : Number((this.rand() * 2).toFixed(4));

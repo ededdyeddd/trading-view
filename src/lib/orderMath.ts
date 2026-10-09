@@ -144,6 +144,10 @@ export type ExitLevel = {
   money: number;
   /** |money| as a percentage of balance. */
   balancePercent: number;
+  /** Signed price change from entry (price − entry): negative below entry, positive above. */
+  delta: number;
+  /** delta as a signed percentage of entry. */
+  deltaPercent: number;
   /** Level is on the wrong side of entry (or non-positive). */
   invalid: boolean;
 };
@@ -202,8 +206,36 @@ export function describeExit(kind: ExitKind, side: Side, entry: number, qty: num
     percent: entry > 0 ? (distance / entry) * 100 : 0,
     money: round2(money),
     balancePercent: balance > 0 ? (moneyAbs / balance) * 100 : 0,
+    delta: Number((price - entry).toFixed(decimals(spec.tickSize))),
+    deltaPercent: entry > 0 ? ((price - entry) / entry) * 100 : 0,
     invalid: !(price > 0) || signedDistance <= EPS,
   };
+}
+
+/** Default exit when a level is switched on: a percentage of entry on the correct side, rounded to tick (SL 2%, TP 4%). */
+export function defaultExitPrice(kind: ExitKind, side: Side, entry: number, percent: number, tickSize: number): number {
+  return roundToTick(entry * (1 + (exitDirection(kind, side) * percent) / 100), tickSize);
+}
+
+/** The positive value a level has in a given input unit (what the user would type). */
+export function exitValueInUnit(level: ExitLevel, unit: ExitUnit): number {
+  switch (unit) {
+    case 'price':
+      return level.price;
+    case 'ticks':
+      return level.ticks;
+    case 'percent':
+      return level.percent;
+    case 'money':
+      return Math.abs(level.money);
+    case 'balancePercent':
+      return level.balancePercent;
+  }
+}
+
+/** Required margin exceeds what the account has available. */
+export function exceedsMargin(margin: number, availableFunds: number): boolean {
+  return margin > availableFunds + 1e-9;
 }
 
 /** Reward-to-risk ratio from SL and TP distances; null if not computable. */

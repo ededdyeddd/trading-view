@@ -21,14 +21,27 @@ export function Toasts() {
       {toasts.map((t) => {
         const meta = ICONS[t.type];
         const Icon = meta.icon;
-        const text = t.message.includes(': ') ? t.message.slice(t.message.indexOf(': ') + 2) : t.message;
+        const text = t.title ? t.message : t.message.includes(': ') ? t.message.slice(t.message.indexOf(': ') + 2) : t.message;
         return (
           <div key={t.id} className={styles.toast} role="status" data-testid={`toast-${t.type}`}>
             <Icon size={20} className={meta.cls} strokeWidth={1.8} />
             <div className={styles.text}>
-              <div className={styles.title}>{meta.title}</div>
-              <div className={styles.message}>{text}</div>
+              <div className={styles.title}>{t.title ?? meta.title}</div>
+              {text && <div className={styles.message}>{text}</div>}
             </div>
+            {t.action && (
+              <button
+                type="button"
+                className={styles.action}
+                onClick={() => {
+                  t.action!.run();
+                  dismiss(t.id);
+                }}
+                data-testid="toast-action"
+              >
+                {t.action.label}
+              </button>
+            )}
             <button type="button" className={styles.close} aria-label="Dismiss" onClick={() => dismiss(t.id)}>
               <X size={16} />
             </button>

@@ -1,8 +1,8 @@
 import { LineStyle, type IPriceLine } from 'lightweight-charts';
 import { useEffect, useRef } from 'react';
 import { logEvent } from '../../analytics/eventLog';
-import { fmtMoney, fmtQty, priceInput } from '../../lib/format';
-import { describeExit, roundToTick } from '../../lib/orderMath';
+import { fmtMoney, fmtQty, offsetInput, priceInput } from '../../lib/format';
+import { describeExit, marketRef, roundToTick } from '../../lib/orderMath';
 import { exitInputText, useOrderTicket, useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
 import type { ChartHandle } from './CandleChart';
 
@@ -135,7 +135,7 @@ export function OrderLines({ handle }: { handle: ChartHandle | null }) {
       const store = useTicketStore.getState();
       const price = roundToTick(rawPrice, spec.tickSize);
       if (id === 'entry') {
-        if (state.priceUnit === 'ticks') store.setPriceInput(String(Math.abs(Math.round((price - view.price!.placeholder) / spec.tickSize))));
+        if (state.priceUnit === 'offset') store.setPriceInput(offsetInput(price - marketRef(state.side, view.bid, view.ask), spec));
         else store.setPriceInput(priceInput(price, spec));
         return;
       }

@@ -43,6 +43,16 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
+/**
+ * How the simulator moves prices. 'gauss': realistic volatility, ticks every 300–800 ms (default).
+ * Price-field test modes with a constant spread: 'calm' = −2..+2 ticks every 500 ms, 'volatile' = −20..+20 ticks every 200 ms.
+ */
+export type SimWalk = 'gauss' | 'calm' | 'volatile';
+const TICK_WALKS: Record<Exclude<SimWalk, 'gauss'>, { ms: number; ticks: number }> = {
+  calm: { ms: 500, ticks: 2 },
+  volatile: { ms: 200, ticks: 20 },
+};
+
 export type SimOptions = {
   /** Override starting prices, e.g. anchor to the last real price after a live feed drops. */
   anchors?: Record<string, number>;
@@ -50,6 +60,7 @@ export type SimOptions = {
   now?: () => number;
   /** Keep every symbol at its seed quote (screenshot comparisons). */
   frozen?: boolean;
+  walk?: SimWalk;
 };
 
 /**
@@ -62,9 +73,11 @@ export class SimProvider implements MarketDataProvider {
   private now: () => number;
   private anchors: Record<string, number>;
   private frozen: boolean;
+  walk: SimWalk;
 
   constructor(opts: SimOptions = {}) {
     this.frozen = !!opts.frozen;
+    this.walk = opts.walk ?? 'gauss';
     this.rand = opts.random ?? Math.random;
     this.now = opts.now ?? Date.now;
     this.anchors = { ...opts.anchors };
@@ -115,8 +128,14 @@ export class SimProvider implements MarketDataProvider {
       st.lastQuote = { ...st.lastQuote, ts: this.now() };
       return st.lastQuote;
     }
-    const sigma = this.tickSigma(st.spec);
-    st.mid = Math.max(st.spec.tickSize * 10, st.mid * (1 + sigma * gauss(this.rand)));
+    if (this.walk === 'gauss') {
+      const sigma = this.tickSigma(st.spec);
+      st.mid = Math.max(st.spec.tickSize * 10, st.mid * (1 + sigma * gauss(this.rand)));
+    } else {
+      const n = TICK_WALKS[this.walk].ticks;
+      const ticks = Math.floor(this.rand() * (2 * n + 1)) - n;
+      st.mid = Math.max(st.spec.tickSize * 10, st.mid + ticks * st.spec.tickSize);
+    }
     const size = st.spec.assetClass === 'stock' ? Math.ceil(this.rand() * 300) : Number((this.rand() * 2).toFixed(4));
     st.lastQuote = this.makeQuote(st, undefined, size);
     return st.lastQuote;
@@ -128,7 +147,7 @@ export class SimProvider implements MarketDataProvider {
 
   private schedule(symbol: string): void {
     const st = this.state(symbol);
-    const delay = 300 + this.rand() * 500;
+    const delay = this.walk === 'gauss' ? 300 + this.rand() * 500 : TICK_WALKS[this.walk].ms;
     st.timer = setTimeout(() => {
       const q = this.step(symbol);
       st.listeners.forEach((l) => l(q));

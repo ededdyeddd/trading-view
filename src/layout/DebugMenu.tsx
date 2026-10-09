@@ -2,7 +2,7 @@ import { Bug } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { clearEvents, exportEventsJson, getEvents, onEventsChange } from '../analytics/eventLog';
 import { DEBUG, FEED_MODE } from '../config/flags';
-import { dropLiveFeeds } from '../market/marketStore';
+import { dropLiveFeeds, setSimWalk, useMarketStore } from '../market/marketStore';
 import { useTradingStore } from '../store/tradingStore';
 import { useVariantStore } from '../store/variantStore';
 import styles from './DebugMenu.module.css';
@@ -15,6 +15,7 @@ export function DebugMenu() {
   const advanceClock = useTradingStore((s) => s.advanceClock);
   const resetAccount = useTradingStore((s) => s.resetAccount);
   const variant = useVariantStore((s) => s.variant);
+  const simWalk = useMarketStore((s) => s.simWalk);
 
   useEffect(() => onEventsChange(() => setCount(getEvents().length)), []);
 
@@ -52,6 +53,15 @@ export function DebugMenu() {
             Clear events
           </button>
           <hr />
+          <label className={styles.meta}>
+            <input
+              type="checkbox"
+              checked={simWalk === 'volatile'}
+              onChange={(e) => setSimWalk(e.target.checked ? 'volatile' : 'gauss')}
+              data-testid="sim-volatile"
+            />{' '}
+            Volatile (sim: ±20 ticks / 200 ms)
+          </label>
           <button type="button" onClick={dropLiveFeeds} data-testid="drop-feeds">
             Drop live feeds (fallback to sim)
           </button>

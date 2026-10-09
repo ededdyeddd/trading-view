@@ -104,7 +104,11 @@
   --nt-text-inverse: #ffffff; /* color/content/tertiary/inverse */
   --nt-text-danger: #cc2f3c; /* color/content/primary/danger-semi-bold */
   --nt-text-success: #06806b; /* color/content/primary/success-semi-bold */
-  --nt-text-warning: #e65100;
+  --color-sl: #e78a00; /* "SL" label in the order summary */
+  --color-tp: #089981; /* "TP" label in the order summary */
+  --color-warning: #e65100; /* warning text (captions) */
+  --nt-summary-amount: #131722; /* money in the order summary */
+  --nt-text-warning: var(--color-warning);
   --nt-link: #2962ff; /* link/primary/default */
 
   --nt-border: #dbdbdb; /* color/border/secondary/neutral-normal */

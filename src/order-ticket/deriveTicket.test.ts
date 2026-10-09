@@ -16,6 +16,7 @@ function state(p: Partial<TicketState> = {}): TicketState {
     type: 'market',
     priceInput: '',
     priceUnit: 'price',
+    priceStatus: 'ok',
     qtyUnit: 'units',
     qtyInput: '100',
     tp: { enabled: false, unit: 'price', input: '', touched: false },

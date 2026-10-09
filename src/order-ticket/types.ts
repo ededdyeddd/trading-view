@@ -1,5 +1,5 @@
 import type { TimeInForce, OrderDraft } from '../engine/types';
-import type { ExitLevel, ExitUnit, OrderType, QtyUnit, Side } from '../lib/orderMath';
+import type { ExitLevel, ExitUnit, OrderType, PriceStatus, QtyUnit, Side } from '../lib/orderMath';
 
 export type ExitState = {
   enabled: boolean;
@@ -17,8 +17,10 @@ export type TicketState = {
   type: OrderType;
   /** Limit / stop price text. */
   priceInput: string;
-  /** Redesign: the price field accepts an absolute price or a positive tick offset from Ask/Bid. */
+  /** Redesign: the ⇆ in the price field switches between an absolute price and a signed price offset from Ask / Bid. */
   priceUnit: PriceUnit;
+  /** Redesign: "Fills now" / "Triggers now", evaluated only on commit, side / type / symbol change and submit — not on ticks. */
+  priceStatus: PriceStatus;
   qtyUnit: QtyUnit;
   qtyInput: string;
   sl: ExitState;
@@ -35,7 +37,7 @@ export type TicketState = {
   fillOutsideRth: boolean;
 };
 
-export type PriceUnit = 'price' | 'ticks';
+export type PriceUnit = 'price' | 'offset';
 
 export type TpLevelState = { input: string; percent: string };
 
@@ -58,16 +60,23 @@ export type ExitView = {
   input: string;
   level: ExitLevel | null;
   error: string | null;
+  /**
+   * Redesign: what an empty or switched-off field shows in grey, as input text in the current unit — the last value,
+   * else the default (SL −2% / TP +4% from entry). '' when it cannot be computed (money units without quantity).
+   */
+  placeholder: string;
+  /** The level the placeholder stands for (grey money on the right of a switched-off field). */
+  placeholderLevel: ExitLevel | null;
 };
 
 export type PriceView = {
   unit: PriceUnit;
   value: number | null;
-  /** The live reference used as placeholder for an empty field (Ask for buys, Bid for sells). */
+  /** Default price (grey in an empty field): Ask / Bid moved 1% (Limit) / 1.5% (Stop) away, on a round step (199.00 at Ask 201.57). */
   placeholder: number;
   /** Signed price distance from the reference (price − Ask/Bid): "Ask − 2.57". */
   offset: number | null;
-  /** Normal placement side for the tick offset: buy limit / sell stop below, buy stop / sell limit above. */
+  /** Normal placement side for the offset: buy limit / sell stop below, buy stop / sell limit above. */
   direction: 'below' | 'above';
   /** Signed ticks from the side's reference (Ask for buys, Bid for sells). */
   offsetTicks: number | null;
@@ -76,6 +85,8 @@ export type PriceView = {
   fillsNow: boolean;
   /** Stop on the wrong side of the market (it would trigger at once). */
   invalid: boolean;
+  /** The redesign's "Fills now" / "Triggers now" warning: the status from the last commit (TicketState.priceStatus). */
+  status: PriceStatus;
 };
 
 export type QtyView = {
@@ -93,7 +104,7 @@ export type QtyView = {
   tradeValue: number;
   margin: number;
   tickValue: number;
-  /** Risk at the stop loss for the rounded quantity ("Real risk"). */
+  /** Risk at the stop loss for the rounded quantity (the actual risk; the redesign shows it only on the SL field and in the summary). */
   realRisk: number | null;
   /** Money at risk per 1 unit (entry ↔ SL), when a valid stop exists. */
   riskPerUnit: number | null;
@@ -101,6 +112,15 @@ export type QtyView = {
   riskBelowOne: boolean;
   /** Largest quantity the available margin allows. */
   maxUnits: number;
+  /** The symbol's minimum quantity in every unit: the grey placeholder of an empty quantity field (null without a price). */
+  placeholder: {
+    units: number;
+    value: number;
+    balancePercent: number;
+    /** Risk of the minimum quantity at the current stop loss; null without a valid stop loss. */
+    riskMoney: number | null;
+    riskBalancePercent: number | null;
+  } | null;
 };
 
 export type DisabledReason =
@@ -136,6 +156,8 @@ export type TicketView = {
   riskReward: number | null;
   expiresAt: number | null;
   availableFunds: number;
+  /** Account balance behind the "% balance" units. */
+  balance: number;
   /** Required margin is above available funds. Production submits anyway (engine rejects); the redesign blocks. */
   marginExceeded: boolean;
   canSubmit: boolean;

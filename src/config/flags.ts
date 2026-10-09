@@ -35,6 +35,9 @@ export const SANDBOX: 'atoms' | 'panel' | null = params.get('sandbox') === '1' ?
 /** Freeze simulated prices (AAPL 201.56 / 201.57) for pixel comparisons (?freeze=1). */
 export const FREEZE = params.get('freeze') === '1';
 
+/** Simulator price walk (?walk=calm|volatile): tick random walks for testing the price field; default realistic. */
+export const SIM_WALK: 'gauss' | 'calm' | 'volatile' = pick(params.get('walk'), ['gauss', 'calm', 'volatile'] as const, 'gauss');
+
 /** Force a closed US stock session (?market=closed). */
 export const MARKET_CLOSED = params.get('market') === 'closed';
 

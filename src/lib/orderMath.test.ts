@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { getSpec } from '../config/symbols';
 import {
   checkPrice,
+  convertRisk,
+  defaultRiskInput,
   defaultLevelPercents,
   describeExit,
   maxQtyForMargin,
@@ -182,10 +184,10 @@ describe('price checks (Figma "Limit Price")', () => {
 });
 
 describe('step 2b formulas', () => {
-  it('Limit: 257 ticks below Ask → 199.00; Stop above Ask', () => {
-    expect(priceFromOffset('limit', 'buy', 201.56, 201.57, 257, 0.01)).toBe(199);
-    expect(priceFromOffset('stop', 'buy', 201.56, 201.57, 343, 0.01)).toBe(205);
-    expect(priceFromOffset('limit', 'sell', 201.56, 201.57, 100, 0.01)).toBe(202.56);
+  it('signed offset: Ask − 2.57 → 199.00; Ask + 3.43 → 205.00; Bid + 1.00 → 202.56', () => {
+    expect(priceFromOffset('buy', 201.56, 201.57, -2.57, 0.01)).toBe(199);
+    expect(priceFromOffset('buy', 201.56, 201.57, 3.43, 0.01)).toBe(205);
+    expect(priceFromOffset('sell', 201.56, 201.57, 1, 0.01)).toBe(202.56);
   });
   it('Risk USD 400, SL 197.50 at Market → 98 shares, real risk 398.86, margin 395.08', () => {
     const { qty } = resolveQty({ unit: 'riskMoney', value: 400, price: ENTRY, balance: BALANCE, slDistance: SL_DIST, spec: AAPL });
@@ -214,5 +216,16 @@ describe('step 2b formulas', () => {
     expect(splitQty(10, [50, 38], 1)).toEqual([5, 3]);
     expect(weightedAverage([205, 207, 209], [33, 33, 34])).toBeCloseTo((205 * 33 + 207 * 33 + 209 * 34) / 100, 9);
     expect(weightedAverage([1], [0])).toBeNull();
+  });
+});
+
+describe('risk input default (1% of balance)', () => {
+  it('Risk USD rounds to whole USD, Risk % balance is 1.00', () => {
+    expect(defaultRiskInput('riskMoney', 99_953.9)).toBe('1000');
+    expect(defaultRiskInput('riskBalancePercent', 99_953.9)).toBe('1.00');
+  });
+  it('converts a typed risk between the two units', () => {
+    expect(convertRisk(1, 'riskMoney', 100_000)).toBe(1000);
+    expect(convertRisk(500, 'riskBalancePercent', 100_000)).toBe(0.5);
   });
 });

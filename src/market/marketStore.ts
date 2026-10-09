@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import { FEED_MODE, FINNHUB_KEY, FREEZE, SEED, type FeedMode } from '../config/flags';
+import { FEED_MODE, FINNHUB_KEY, FREEZE, SEED, SIM_WALK, type FeedMode } from '../config/flags';
 import { SYMBOLS, getSpec, type FeedKind } from '../config/symbols';
 import { BinanceProvider } from './binanceProvider';
 import { FinnhubProvider } from './finnhubProvider';
-import { SimProvider, mulberry32 } from './simProvider';
+import { SimProvider, mulberry32, type SimWalk } from './simProvider';
 import type { Candle, MarketDataProvider, Quote, Timeframe } from './types';
 
 /** A live symbol with no quote for this long is considered dropped and falls back to sim. */
@@ -24,6 +24,7 @@ type MarketState = {
   prevClose: Record<string, number>;
   status: Record<string, FeedStatus>;
   feedMode: FeedMode;
+  simWalk: SimWalk;
 };
 
 export const useMarketStore = create<MarketState>(() => ({
@@ -31,6 +32,7 @@ export const useMarketStore = create<MarketState>(() => ({
   prevClose: {},
   status: {},
   feedMode: FEED_MODE,
+  simWalk: SIM_WALK,
 }));
 
 // ---------------------------------------------------------------------------
@@ -38,7 +40,13 @@ export const useMarketStore = create<MarketState>(() => ({
 // ---------------------------------------------------------------------------
 
 // A seed makes the simulated market repeatable (study scenarios); otherwise Math.random.
-const sim = new SimProvider({ frozen: FREEZE, random: SEED !== null ? mulberry32(SEED) : undefined });
+const sim = new SimProvider({ frozen: FREEZE, random: SEED !== null ? mulberry32(SEED) : undefined, walk: SIM_WALK });
+
+/** Debug: switch how simulated prices move (takes effect from the next tick). */
+export function setSimWalk(walk: SimWalk) {
+  sim.walk = walk;
+  useMarketStore.setState({ simWalk: walk });
+}
 const binance = new BinanceProvider((symbol, reason) => fallBack(symbol, reason));
 const finnhub = FINNHUB_KEY ? new FinnhubProvider(FINNHUB_KEY, (symbol, reason) => fallBack(symbol, reason)) : null;
 

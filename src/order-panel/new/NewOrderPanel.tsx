@@ -5,7 +5,6 @@ import { getSpec, pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber, fmtPrice, fmtQty } from '../../lib/format';
 import type { ExitKind, OrderType } from '../../lib/orderMath';
 import { useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
-import type { PriceUnit } from '../../order-ticket/types';
 import { now, useTradingStore } from '../../store/tradingStore';
 import { useUiStore } from '../../store/uiStore';
 import { MenuItem, Popover } from '../../ui/Popover';
@@ -13,13 +12,15 @@ import { Checkbox } from '../../ui/Switch';
 import { SymbolLogo } from '../../ui/SymbolLogo';
 import styles from './NewOrderPanel.module.css';
 import {
-  EXIT_UNITS,
   QTY_UNITS,
   TIFS,
   exitMenuValue,
   exitPlaceholder,
   exitText,
   exitTitle,
+  exitUnitBlocked,
+  exitUnitsFor,
+  exitUnitInfo,
   exitUnitLabel,
   fillToastText,
   formatExitInput,
@@ -29,14 +30,16 @@ import {
   percentLeftText,
   placedToastText,
   priceLabel,
+  priceSwapLabel,
   priceText,
-  priceUnitLabel,
   qtyMenuValue,
+  qtyPlaceholder,
   qtyText,
+  qtyUnitInfo,
   qtyUnitLabel,
   riskRewardText,
   submitText,
-  summaryText,
+  summaryParts,
   tifMenuText,
   tifRowText,
 } from './presenters';
@@ -71,9 +74,12 @@ function ymd(ts: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Redesigned order ticket: Market / Limit / Stop, risk-first sizing. A thin view over useOrderTicket(); no math here. */
+/**
+ * Redesigned order ticket: Market / Limit / Stop, risk-first sizing. A thin view over useOrderTicket(); no math here.
+ * Grey placeholders and live values in unit menus read `slowView` (the market at most every 500 ms).
+ */
 export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
-  const { state, view, spec, quote } = ticket;
+  const { state, view, slowView, labelQuote, spec, quote } = ticket;
   const t = useTicketStore.getState();
   const [tab, setTab] = useState<'order' | 'dom'>('order');
   const [exitsOpen, setExitsOpen] = useState(true);
@@ -82,10 +88,12 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const tifRef = useRef<HTMLDivElement>(null);
   const slInputFocus = useRef(false);
 
-  const price = priceText(state, view, spec);
-  const qty = qtyText(state, view, spec);
+  const price = priceText(state, view, spec, labelQuote);
+  const pricePh = priceText(state, slowView, spec);
+  const qty = qtyText(state, state.qtyInput.trim() === '' ? slowView : view, spec);
+  const qtyPh = qtyPlaceholder(state, slowView, spec);
   const submit = submitText(state, view, spec);
-  const summary = view.canSubmit ? summaryText(view) : null;
+  const summary = view.canSubmit ? summaryParts(view) : null;
   const leftText = percentLeftText(view);
 
   // "Turn on stop loss" link: focus the SL field once it is enabled.
@@ -109,6 +117,11 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const doSubmit = () => {
     if (submit.disabled || !view.draft) {
       logEvent('validation_error', { reason: submit.reason, trigger: 'submit-attempt' });
+      return;
+    }
+    // The price turned "Fills now" / "Triggers now" since the last check: show the warning first, the next click sends.
+    if (!t.checkPriceOnSubmit()) {
+      logEvent('validation_error', { reason: 'price-moved', trigger: 'submit-attempt' });
       return;
     }
     const events = t.submit(view, { silent: true });
@@ -166,7 +179,8 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
 
   const exitBlock = (kind: ExitKind, aside?: ReactNode) => {
     const ex = view[kind];
-    const text = exitText(kind, state, view, spec);
+    const ph = slowView[kind].placeholder;
+    const text = exitText(kind, state, ex.enabled ? view : slowView, spec);
     const decimals = ex.unit === 'price' ? pricePrecision(spec) : ex.unit === 'ticks' ? 0 : 2;
     return (
       <ExitLevel
@@ -174,16 +188,25 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
         title={exitTitle(kind)}
         label={`${exitTitle(kind)}${kind === 'tp' && view.tpLevels.length > 1 && state.tp.enabled ? ' 1' : ''} ${exitUnitLabel(kind, ex.unit)}`}
         unit={ex.unit}
-        units={EXIT_UNITS.map((u) => ({ value: u, label: capitalize(exitUnitLabel(kind, u)), end: exitMenuValue(kind, u, view, spec) }))}
+        units={exitUnitsFor().map((u) => ({
+          value: u,
+          label: capitalize(exitUnitLabel(kind, u)),
+          end: exitMenuValue(kind, u, state, slowView, spec),
+          info: exitUnitInfo(kind, u),
+          disabled: !!exitUnitBlocked(kind, u, state),
+          disabledReason: exitUnitBlocked(kind, u, state) ?? undefined,
+        }))}
         onUnit={(u) => t.setExitUnit(kind, u, view)}
         enabled={ex.enabled}
-        onToggle={(v) => t.setExitEnabled(kind, v, view)}
+        onToggle={(v) => t.setExitEnabled(kind, v, slowView)}
         aside={aside}
         field={{
           value: ex.enabled ? ex.input : '',
           display: ex.enabled ? formatExitInput(ex.input, ex.unit, spec) : '',
           onChange: (v) => t.setExitInput(kind, v),
-          placeholder: exitPlaceholder(ex.unit),
+          placeholder: ph ? formatExitInput(ph, ex.unit, spec) : exitPlaceholder(),
+          placeholderStyle: ph ? 'value' : 'text',
+          fill: ph || undefined,
           suffix: text.suffix,
           right: text.right,
           rightTone: text.rightTone,
@@ -210,7 +233,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
           placeholder={String(view.tpLevels[index]?.percent ?? 0)}
           suffix="%"
           disabled={!state.tp.enabled}
-          onActivate={() => t.setExitEnabled('tp', true, view)}
+          onActivate={() => t.setExitEnabled('tp', true, slowView)}
           ariaLabel={`Take profit ${index + 1}, % of position`}
           testId={`nt-tp${index + 1}-percent`}
           onEnter={doSubmit}
@@ -264,39 +287,30 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
             {state.type !== 'market' && (
               <div className={`${styles.px} ${styles.qty}`}>
                 <div className={styles.qtyLabel}>
-                  <FieldLabelMenu<PriceUnit>
-                    label={
-                      state.priceUnit === 'price' ? priceLabel(state.type) : `${priceLabel(state.type)}, ${priceUnitLabel('ticks', state.side).toLowerCase()}`
-                    }
-                    value={state.priceUnit}
-                    options={(['price', 'ticks'] as PriceUnit[]).map((u) => ({
-                      value: u,
-                      label: priceUnitLabel(u, state.side),
-                      end:
-                        u === 'price'
-                          ? view.price?.value != null
-                            ? fmtPrice(view.price.value, spec)
-                            : ''
-                          : view.price?.offsetTicks != null
-                            ? `${Math.abs(view.price.offsetTicks)} ticks`
-                            : '',
-                    }))}
-                    onChange={(u) => t.setPriceUnit(u, view)}
-                    testId="nt-price-unit"
-                  />
+                  <span className={styles.staticLabel} data-testid="nt-price-label">
+                    {priceLabel(state.type, state.priceUnit, state.side)}
+                  </span>
                 </div>
                 <ValueField
                   value={state.priceInput}
                   onChange={t.setPriceInput}
-                  placeholder={price.placeholder}
+                  onCommit={t.commitPrice}
+                  placeholder={pricePh.placeholder}
+                  fill={pricePh.fill}
                   suffix={price.suffix}
-                  right={price.right}
-                  rightTone={price.rightTone}
+                  right={state.priceInput.trim() === '' ? pricePh.right : price.right}
+                  rightTone={state.priceInput.trim() === '' ? pricePh.rightTone : price.rightTone}
                   state={price.captionTone === 'warning' ? 'warning' : 'default'}
-                  step={state.priceUnit === 'price' ? spec.tickSize : 1}
-                  decimals={state.priceUnit === 'price' ? pricePrecision(spec) : 0}
+                  step={spec.tickSize}
+                  decimals={pricePrecision(spec)}
+                  signed={state.priceUnit === 'offset'}
+                  swap={{
+                    label: priceSwapLabel(state.priceUnit, state.side),
+                    onClick: () => t.setPriceUnit(state.priceUnit === 'price' ? 'offset' : 'price', view),
+                    testId: 'nt-price-swap',
+                  }}
                   onEnter={doSubmit}
-                  ariaLabel={priceLabel(state.type)}
+                  ariaLabel={priceLabel(state.type, state.priceUnit, state.side)}
                   testId="nt-price"
                 />
                 {price.caption && (
@@ -313,7 +327,12 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 <FieldLabelMenu
                   label={qtyUnitLabel(state.qtyUnit, spec)}
                   value={state.qtyUnit}
-                  options={QTY_UNITS.map((unit) => ({ value: unit, label: qtyUnitLabel(unit, spec), end: qtyMenuValue(unit, view, spec) }))}
+                  options={QTY_UNITS.map((unit) => ({
+                    value: unit,
+                    label: qtyUnitLabel(unit, spec),
+                    end: qtyMenuValue(unit, state, slowView, spec),
+                    info: qtyUnitInfo(unit, spec),
+                  }))}
                   onChange={(u) => t.setQtyUnit(u, view)}
                   testId="nt-qty-unit"
                 />
@@ -322,9 +341,11 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 value={state.qtyInput}
                 display={formatQtyInput(state.qtyInput, state.qtyUnit, spec)}
                 onChange={t.setQtyInput}
-                placeholder="0"
+                placeholder={qtyPh.placeholder}
+                fill={qtyPh.fill || undefined}
                 suffix={qty.suffix}
                 right={qty.right}
+                rightTone={qty.rightTone}
                 state={qty.captionTone === 'error' ? 'error' : 'default'}
                 step={state.qtyUnit === 'units' ? spec.qtyStep : 1}
                 decimals={state.qtyUnit === 'units' ? qtyPrecision(spec) : 2}
@@ -341,7 +362,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                       ? () => {
                           slInputFocus.current = true;
                           setExitsOpen(true);
-                          t.setExitEnabled('sl', true, view);
+                          t.setExitEnabled('sl', true, slowView);
                         }
                       : undefined
                   }
@@ -378,7 +399,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                                 value={l.input}
                                 display={formatExitInput(l.input, state.tp.unit, spec)}
                                 onChange={(v) => t.setTpLevelInput(index, v)}
-                                placeholder={exitPlaceholder(state.tp.unit)}
+                                placeholder={exitPlaceholder()}
                                 placeholderStyle="text"
                                 suffix={text.suffix}
                                 right={text.right}
@@ -461,7 +482,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
           </div>
 
           <div className={styles.footer}>
-            <OrderSummary text={summary}>
+            <OrderSummary parts={summary}>
               <SubmitButton side={state.side} primary={submit.primary} secondary={submit.secondary} disabled={submit.disabled} onClick={doSubmit} />
             </OrderSummary>
           </div>

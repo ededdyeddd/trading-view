@@ -134,8 +134,8 @@ export function Sandbox() {
         <Cell title="focus">
           <ValueField value="100" onChange={noop} placeholder="0" right="20,157.00 USD" ariaLabel="q" forceFocus />
         </Cell>
-        <Cell title="suffix">
-          <ValueField value="20000" display="20,000.00" suffix="USD" onChange={noop} placeholder="0" right="99 shares" ariaLabel="q" />
+        <Cell title="formatted (unit in the label)">
+          <ValueField value="20000" display="20,000.00" onChange={noop} placeholder="0" right="99 shares" ariaLabel="q" />
           <FieldCaption>Margin 399.11 USD · Tick 0.99 USD</FieldCaption>
         </Cell>
         <Cell title="disabled">
@@ -213,7 +213,7 @@ export function Sandbox() {
             enabled
             onToggle={noop}
             title="Take profit"
-            field={{ value: '943', suffix: 'ticks', onChange: noop, placeholder: 'Enter ticks', right: '+943.00 USD', rightTone: 'success', ariaLabel: 'tp' }}
+            field={{ value: '943', onChange: noop, placeholder: 'Enter ticks', right: '+943.00 USD', rightTone: 'success', ariaLabel: 'tp' }}
             caption="At 211.00 · +4.68% from entry"
             captionTone="neutral"
             testId="sb-tp"
@@ -244,27 +244,27 @@ export function Sandbox() {
 
       <Group title="OrderSummary + SubmitButton">
         <Cell title="hidden · enabled">
-          <OrderSummary text={null}>
+          <OrderSummary parts={null}>
             <SubmitButton side="buy" primary="Buy" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>
         <Cell title="disabled with reason">
-          <OrderSummary text={null}>
+          <OrderSummary parts={null}>
             <SubmitButton side="buy" primary="Buy" secondary="Enter quantity to buy AAPL" disabled onClick={noop} />
           </OrderSummary>
         </Cell>
         <Cell title="one exit">
-          <OrderSummary text="SL −407.00 USD">
+          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD' }]}>
             <SubmitButton side="buy" primary="Buy" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>
         <Cell title="two exits">
-          <OrderSummary text="SL −407.00 USD · TP +943.00 USD">
+          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD' }, { label: 'TP', amount: '+943.00 USD' }]}>
             <SubmitButton side="buy" primary="Buy" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>
         <Cell title="sell">
-          <OrderSummary text="SL −407.00 USD · TP +943.00 USD">
+          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD' }, { label: 'TP', amount: '+943.00 USD' }]}>
             <SubmitButton side="sell" primary="Sell" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>

@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronRight, ChevronUp, Clock3, LoaderCircle, Plus, X } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { ArrowLeftRight, ChevronDown, ChevronRight, ChevronUp, Clock3, Info, LoaderCircle, Plus, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { parseNum } from '../../../lib/format';
 import type { Side } from '../../../lib/orderMath';
 import { MenuItem, Popover } from '../../../ui/Popover';
 import type { CaptionTone, Tone } from '../presenters';
@@ -96,7 +97,17 @@ export function UnderlineTabs<T extends string>({
 
 // ---------------------------------------------------------------------------
 
-export type MenuOption<T extends string> = { value: T; label: string; end?: string; disabled?: boolean };
+export type MenuOption<T extends string> = {
+  value: T;
+  label: string;
+  /** Live value of the order in this unit, on the right. */
+  end?: string;
+  /** Formula behind the value, shown on hover of an ⓘ next to the label. */
+  info?: string;
+  disabled?: boolean;
+  /** Why a disabled item cannot be picked (hover tooltip). */
+  disabledReason?: string;
+};
 
 /** Field label that is also the unit dropdown: "Shares ▾", "Stop loss price ▾"; the menu shows live values per unit. */
 export function FieldLabelMenu<T extends string>({
@@ -138,13 +149,22 @@ export function FieldLabelMenu<T extends string>({
             key={o.value}
             active={o.value === value}
             disabled={o.disabled}
-            end={o.disabled ? 'Soon' : o.end}
+            end={o.end}
+            title={o.disabled ? o.disabledReason : undefined}
             onSelect={() => {
               onChange(o.value);
               setOpen(false);
             }}
           >
             {o.label}
+            {o.info && (
+              <span className={s.menuInfo} aria-label={o.info} data-testid={testId ? `${testId}-info-${o.value}` : undefined}>
+                <Info size={14} strokeWidth={1.5} />
+                <span className={s.menuInfoTip} role="tooltip">
+                  {o.info}
+                </span>
+              </span>
+            )}
           </MenuItem>
         ))}
       </Popover>
@@ -163,6 +183,8 @@ type ValueFieldProps = {
   display?: string;
   onChange: (v: string) => void;
   placeholder: string;
+  /** Live suggested value: a click into the empty field substitutes it, selected, so typing replaces it. */
+  fill?: string;
   /** "0"-style placeholder is the bold text at 50%; text placeholders ("Enter price") are secondary. */
   placeholderStyle?: 'value' | 'text';
   suffix?: string;
@@ -175,20 +197,41 @@ type ValueFieldProps = {
   decimals?: number;
   onEnter?: () => void;
   onBlur?: () => void;
+  /** The value is final: blur, or an ArrowUp / ArrowDown / wheel step. */
+  onCommit?: () => void;
   ariaLabel: string;
   testId?: string;
   /** Sandbox only. */
   forceFocus?: boolean;
   /** Click on the disabled field turns it on (production SL/TP behavior); the field is focused once enabled. */
   onActivate?: () => void;
+  /** ⇆ between the value and the right text: switches the input mode (tooltip = `label`). */
+  swap?: { label: string; onClick: () => void; testId?: string };
+  /** The value may be negative (an offset from Ask / Bid): "−" is accepted and steps may cross zero. */
+  signed?: boolean;
 };
 
-/** Value on the left (with unit suffix), a second value on the right, no swap button. */
+const MINUS = '−';
+
+/** Typed text: digits and one dot; with `signed` also a leading minus (a hyphen is turned into U+2212). */
+function clean(raw: string, signed?: boolean): string {
+  const neg = signed && /^\s*[-−]/.test(raw);
+  const body = raw.replace(/[^\d.]/g, '');
+  return neg ? `${MINUS}${body}` : body;
+}
+
+function offsetText(n: number, decimals: number): string {
+  const t = Math.abs(n).toFixed(decimals);
+  return n < 0 && Number(t) !== 0 ? `${MINUS}${t}` : t;
+}
+
+/** Value on the left (with unit suffix), a second value on the right, an optional ⇆ between them. */
 export function ValueField({
   value,
   display,
   onChange,
   placeholder,
+  fill,
   placeholderStyle = 'value',
   suffix,
   right,
@@ -199,21 +242,41 @@ export function ValueField({
   decimals = 0,
   onEnter,
   onBlur,
+  onCommit,
   ariaLabel,
   testId,
   forceFocus,
   onActivate,
+  swap,
+  signed,
 }: ValueFieldProps) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const focusOnEnable = useRef(false);
+  const selectOnFocus = useRef(false);
   useEffect(() => {
     if (!disabled && focusOnEnable.current) {
       focusOnEnable.current = false;
+      selectOnFocus.current = true;
       inputRef.current?.focus();
     }
   }, [disabled]);
+  // The level was switched on with its placeholder value: select it once the focused value is rendered.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!selectOnFocus.current || !focused || !el) return;
+    selectOnFocus.current = false;
+    el.select();
+  }, [focused, value]);
   const shown = focused ? value : (display ?? value);
+  /** One step up or down; an empty field starts from its suggested value (the grey placeholder). */
+  const stepBy = (steps: number) => {
+    const base = value !== '' ? value : (fill ?? '');
+    const n = parseNum(base) || 0;
+    const next = n + steps * step;
+    onChange(signed ? offsetText(next, decimals) : Math.max(0, next).toFixed(decimals));
+    onCommit?.();
+  };
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -222,12 +285,36 @@ export function ValueField({
     }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
-    const n = Number(value.replace(/,/g, '')) || 0;
-    onChange(Math.max(0, n + (e.key === 'ArrowUp' ? step : -step)).toFixed(decimals));
+    stepBy(e.key === 'ArrowUp' ? 1 : -1);
   };
+  // Mouse wheel over the focused field steps the value (TradingView behavior) instead of scrolling the panel.
+  // A native listener: React's onWheel is passive and cannot prevent the scroll.
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const stepRef = useRef(stepBy);
+  useLayoutEffect(() => {
+    stepRef.current = stepBy;
+  });
+  useEffect(() => {
+    const el = fieldRef.current;
+    if (!el) return;
+    let acc = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (document.activeElement !== inputRef.current || inputRef.current?.disabled) return;
+      e.preventDefault();
+      // Wheel up = step up. Small trackpad deltas accumulate to one step per ~40 px.
+      acc += e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 40;
+      const steps = Math.trunc(acc / 40);
+      if (steps === 0) return;
+      acc -= steps * 40;
+      stepRef.current(-steps);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
   const isFocus = (focused || forceFocus) && !disabled;
   return (
     <div
+      ref={fieldRef}
       className={cx(
         s.field,
         isFocus && state === 'default' && s.fieldFocus,
@@ -262,18 +349,44 @@ export function ValueField({
             inputMode="decimal"
             aria-label={ariaLabel}
             aria-invalid={state === 'error' || undefined}
-            onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ''))}
-            onFocus={() => setFocused(true)}
+            onChange={(e) => onChange(clean(e.target.value, signed))}
+            onFocus={(e) => {
+              setFocused(true);
+              if (value !== '' || !fill) return;
+              // Substitute the suggested value right in the DOM (before React re-renders) and select it, so the
+              // next keystroke replaces it; re-select after the click has placed the caret.
+              const el = e.currentTarget;
+              el.value = fill;
+              el.select();
+              onChange(fill);
+              requestAnimationFrame(() => document.activeElement === el && el.value === fill && el.select());
+            }}
             onBlur={() => {
               setFocused(false);
               onBlur?.();
+              onCommit?.();
             }}
             onKeyDown={onKeyDown}
             data-testid={testId}
           />
         </span>
-        {suffix && shown !== '' && <span className={s.suffix}>{suffix}</span>}
+        {suffix && (shown !== '' || (placeholderStyle === 'value' && placeholder !== '')) && (
+          <span className={cx(s.suffix, shown === '' && s.suffixPlaceholder)}>{suffix}</span>
+        )}
       </span>
+      {swap && (
+        <button
+          type="button"
+          className={s.swap}
+          aria-label={swap.label}
+          title={swap.label}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={swap.onClick}
+          data-testid={swap.testId}
+        >
+          <ArrowLeftRight size={18} strokeWidth={1.3} />
+        </button>
+      )}
       {right && (
         <span
           className={cx(
@@ -281,6 +394,7 @@ export function ValueField({
             rightTone === 'danger' && s.toneDanger,
             rightTone === 'success' && s.toneSuccess,
             rightTone === 'warning' && s.toneWarning,
+            rightTone === 'muted' && s.toneMuted,
           )}
         >
           {right}
@@ -410,7 +524,7 @@ type ExitLevelProps<T extends string> = {
   testId: string;
 };
 
-/** Label menu + switch + ValueField + caption. Off = grey field with a placeholder. */
+/** Label menu + switch + ValueField + caption. Off = grey field with a placeholder (numeric when the field passes `placeholderStyle: 'value'`). */
 export function ExitLevel<T extends string>({
   label,
   unit,
@@ -434,12 +548,12 @@ export function ExitLevel<T extends string>({
       {aside ? (
         <div className={s.dateTime}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <ValueField {...field} disabled={!enabled} onActivate={() => onToggle(true)} placeholderStyle="text" />
+            <ValueField placeholderStyle="text" {...field} disabled={!enabled} onActivate={() => onToggle(true)} />
           </div>
           {aside}
         </div>
       ) : (
-        <ValueField {...field} disabled={!enabled} onActivate={() => onToggle(true)} placeholderStyle="text" />
+        <ValueField placeholderStyle="text" {...field} disabled={!enabled} onActivate={() => onToggle(true)} />
       )}
       {enabled && caption && (
         <FieldCaption tone={captionTone} testId={`${testId}-caption`}>
@@ -546,13 +660,22 @@ export function SubmitButton({ side, primary, secondary, disabled, loading, onCl
   );
 }
 
-/** Pinned footer: optional summary ("SL −407.00 USD · TP +943.00 USD") wrapping the submit button. */
-export function OrderSummary({ text, children }: { text: string | null; children: ReactNode }) {
-  if (!text) return <>{children}</>;
+export type SummaryPart = { label: 'SL' | 'TP'; amount: string; note?: string };
+
+/** Pinned footer: optional summary ("SL −407.00 USD · TP +943.00 USD", coloured labels) wrapping the submit button. */
+export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null; children: ReactNode }) {
+  if (!parts || parts.length === 0) return <>{children}</>;
   return (
     <div className={s.footerBlock}>
       <div className={s.summary} data-testid="nt-summary">
-        {text}
+        {parts.map((p, i) => (
+          <span key={p.label}>
+            {i > 0 && <span className={s.summarySep}> · </span>}
+            <span className={p.label === 'SL' ? s.summaryLabelSl : s.summaryLabelTp}>{p.label}</span>
+            <span className={s.summaryAmount}> {p.amount}</span>
+            {p.note && <span className={s.summaryAmount}> {p.note}</span>}
+          </span>
+        ))}
       </div>
       {children}
     </div>

@@ -72,7 +72,7 @@ Sources: the 2a prompt and Figma (`4086:71721` Market · Empty, `4086:72133` Mar
 - **Field radius** is 6 px everywhere (in Empty the quantity field is 8, everywhere else 6).
 - **Active Sell** mirrors Buy: solid `#f23645` with white text (not in the mockup).
 - **Field error**: the DS state is a 2 px `#f23645` border with no icon, plus red caption text under the field that repeats the button's reason. Warning is the same with an orange border (`#f57c00`) and caption (`#e65100`); in 2a it only shows in the sandbox.
-- **New-panel defaults**: quantity is empty; enabling a level fills SL −2% / TP +4% from entry (rounded to the tick); disabling clears it. `current` keeps its own defaults (1 share, TP 75 / SL 25 ticks).
+- **New-panel defaults**: quantity is empty; enabling a level fills SL −2% / TP +4% from entry (rounded to the tick); ~~disabling clears it~~ — since the 2a/2b follow-up, disabling keeps the value as the grey placeholder (see below). `current` keeps its own defaults (1 share, TP 75 / SL 25 ticks).
 - **Toasts**: in `new`, a market fill shows "Bought 100 AAPL at 201.57" with a **Close position** button for 8 s. In `current`, toasts stay as in production.
 - **Time in force**: English, format `Week · Oct 16`, where the date is today + 7 days (Figma shows Oct 15 because the mockup was made on Oct 8). Periods: Day / Week / Month / GTD; 2a uses Week and the row does not expand.
 - **Logo**: the mockup has the TradingView logo, which we don't copy, so we show a generated letter. The "≈" status icon (data not official) is drawn with tokens.
@@ -148,3 +148,72 @@ A study mode with its own URLs (`?study=1`, a task strip, Done, a timer, result 
 ## e2e (Playwright, `npm run e2e`)
 
 `e2e/scenarios.spec.ts`: 3 scenarios × 2 panels — fill the ticket through the panel UI, submit, check the order the engine accepted (side, type, price, quantity, SL, TP, time in force), and check that the console has no errors. Plus a test of the floating switch and of the panel being open by default.
+
+## Typography and disabled SL/TP (after 2b)
+
+- **Weights**: Figma uses SF Pro 510 (Medium) / 590 (Semibold). Chrome's `-apple-system` renders those off-grid weights close to Bold, and 500 the same as 400. The tokens are 500 / 600, as in the current panel; 600 matches the Figma semibold side by side.
+- **Click on a disabled SL/TP field** turns the level on and focuses the field, as in production (both panels; in `new` also the TP "% of position" field).
+- The summary above the button stays `SL −407.00 USD · TP +943.00 USD` (PRD FR-8.1); the Filled mockup has `SL: … · TP: …`.
+
+## 2a/2b follow-up: live menu values, live placeholders (PRD FR-4.1, FR-4.2, FR-5.1, FR-6.3)
+
+- **Slow view.** `useOrderTicket()` also returns `slowView`: the same `deriveTicket` over a quote held for 500 ms. Unit-menu values, grey placeholders and the grey money of switched-off SL/TP read it, so they follow the market at most every 500 ms, while user edits apply at once. At Limit the menu values depend on the market only through Ticks from Ask/Bid.
+- **Menu values** follow the PRD table literally: numbers without unit words (`20,157.00`, `20.17%`, `407`, `257 below`). The selected unit shows what was typed; in risk modes Risk USD shows the real risk after rounding. "—" when not computable, "Needs SL" for risk units without a stop loss; items stay clickable.
+- **ⓘ texts** are in the PRD in Russian; the UI is English, so they are translated one to one ("Shares × entry price", "Loss if triggered", …). Tooltip on hover of the icon.
+- **Click to substitute.** `ValueField.fill`: on focus of an empty field the value is written to the DOM, selected and committed in the same handler (writing it only through React raced Playwright's `fill()` and gave "1100").
+- **Quantity placeholder** = `minQty` in the current unit. What a click substitutes in USD / % balance / risk units is rounded **up** to the cent (`0.20%` shown, `0.21` substituted), otherwise rounding down to the step would give 0 shares. The right side is grey: `201.57 USD` for Shares, `1 share` for the other units.
+- **Price in ticks**: an empty field shows `0`; a click substitutes 0 ticks = Ask/Bid (0 ticks is now a valid input).
+- **Switched-off SL/TP**: numeric grey placeholder (last value, else −2% / +4% of entry; a limit without a price counts from Ask/Bid). Money units without a quantity have no number to show and keep the text placeholder ("Enter amount").
+- **"Fills now" / "Triggers now"** use the strict `beyondMarket` check. A Buy Stop exactly at Ask has no warning but still executes at once in the engine (production treats it as already triggered).
+- **Risk sizing and exit units.** While Quantity is in Risk USD / Risk % balance, the money units of SL and TP (Risk/Reward USD, Risk/Reward % balance) are disabled in the menus, with a hover reason. Switching Quantity to a risk unit moves an SL/TP that was in a money unit to price, keeping the level. `MenuItem` now uses `aria-disabled` instead of native `disabled`, so the reason tooltip shows.
+- **Default order type** of the new panel is **Limit** (was Market). `current` keeps Limit too, as in production.
+- **Empty Limit / Stop price**: the right side shows a grey "Ask" (Sell: "Bid") — what the placeholder is; in ticks mode the grey price. Replaces the earlier "right side empty while the placeholder shows".
+- **Suggested Limit / Stop price** (the grey placeholder, what a click substitutes) is Ask / Bid moved **0.1% of the price** (rounded to ticks, at least 1) to the side where the order rests: Buy Limit / Sell Stop below, Sell Limit / Buy Stop above (AAPL: 20 ticks, `201.37 · Ask − 0.20`). A placeholder exactly at the market kept tripping "Fills now" / "Triggers now" as soon as the price moved. Changes PRD FR-4.2 ("placeholder = Ask/Bid"). Exits and the quantity placeholder of an empty-price limit count from this suggested price. The constant is `DEFAULT_PRICE_OFFSET_PERCENT` in `orderMath.ts`.
+
+---
+
+# Price field: defaults and validation (2026-10-09)
+
+Implemented from the "Order price field: defaults and validation rules" spec, for the new panel only (`current` keeps production behavior). Rules live in `order-ticket/priceField.ts` as pure patches; the store applies them on ticks, commits, side / type / symbol changes and submit. Constants: `DEFAULT_OFFSET_PCT = 1` (`lib/orderMath.ts`), commit debounce `PRICE_COMMIT_MS = 600`.
+
+- **Replaces** the earlier empty field with a live grey placeholder (Ask/Bid ± 0.1%). The field is now prefilled; an emptied field shows the same default in grey.
+- **Fills / Triggers now at the market price too** (≥ Ask / ≤ Bid), as the spec says; this replaces the earlier "strictly beyond" rule. The status comes from the last commit, not the live market.
+- **Default mode also recomputes a crossed price**, not only one outside the 0.5×–2× band: a single jump larger than the band could otherwise leave a default on the wrong side.
+- **Spec test case 3** ("market then drops below 201.60") can only show a stale warning if the market *rises* above 201.60; a drop keeps the price a real "fills now". Both directions are covered in `priceField.test.ts`.
+- **Not built:** BID / MID / ASK chips and Reset (a "Reset to default" menu item was tried and removed at the user's request), so only a symbol change returns the price to the default. There are no stepper buttons, so arrow keys and the mouse wheel count as stepper clicks.
+- **Enter submits**, so it is handled as a submit (re-validates, can hold the first click), not as a commit.
+- **Mock market:** `?walk=calm` (±2 ticks / 500 ms) and `?walk=volatile` (±20 ticks / 200 ms), plus a "Volatile" checkbox in the debug menu (`?debug=1`). The default sim walk is unchanged.
+
+# Risk mode linkage (2026-10-09)
+
+Implemented from the "Risk mode linkage" spec for the new panel. Agreed with the user; replaces earlier decisions:
+
+- **No "Real risk" anywhere.** The Quantity caption in risk modes is "Margin … · Tick …" like other modes. The actual risk (after rounding shares down) shows only on the SL field's right side and in the summary ("SL −398.86 USD").
+- **Unit menu:** the Risk USD / Risk % balance items show the typed risk converted between the two (400.00 ↔ 0.40%), not the actual risk (was 398.86).
+- **SL menu hides** Risk USD / Risk % balance while Quantity is in a risk mode (they were disabled with a tooltip). **TP keeps its Reward items disabled** with the tooltip — the spec only covers SL.
+- **Shares = 0:** "0 shares", caption "Risk too small for 1 share (min 4.07 USD)", the same text on the disabled button (was "Risk is below 1 share").
+- **Default risk:** 1% of balance (Risk USD rounded to whole USD: 1,000; Risk % balance 1.00), set when switching into a risk mode and shown as the grey placeholder of an empty field. Between the two risk units the typed risk converts. Previously the current position's risk carried over and the placeholder was the risk of 1 share.
+- **Switching Quantity to Risk USD / Risk % balance turns SL on** with its placeholder (the last value, else −2% from entry). "Turn on stop loss to calculate shares" now appears only if the user switches SL off in a risk mode.
+- Shares on the right are pluralized ("1 share", "2 shares").
+- The stage prompts in the PRD appendices are left as historical text.
+
+# Figma update of 9 Oct: ⇆, empty states, colours, exits (new panel only)
+
+Source: the Figma frames `4116:117479` (Market / Limit · Empty / Filled, unit-menu cards) and the "Правки панели new по макетам от 9 октября" prompt. `?panel=current` is untouched.
+
+**Done**
+
+- **⇆ replaces the price-unit dropdown** (Limit price / Stop price). Two modes only, so the mode is switched by the ⇆ in the field, the label follows it: `Limit price` ↔ `Offset from Ask` (Sell: `Offset from Bid`). Tooltip: "Enter as offset from Ask" / "Enter as price". The offset is a **signed price** (−2.57), not ticks; the order price is kept on a switch. Reverses the earlier "no ⇆" decision in PRD FR-4.1 and the "Ticks from Ask" menu row.
+- **The price is no longer prefilled.** An empty field shows a grey placeholder (Limit 1%, Stop 1.5% from Ask / Bid, away from the market, on the round step: Buy Limit 199.00, Sell Limit 204.00, Buy Stop 205.00, Sell Stop 198.00); grey right side "Ask − 2.57"; a click substitutes it, selected; the button stays disabled ("Enter price and quantity") until a price is typed. Removed: `defaultPricePatch`, `tickPatch`, `priceSource`, `defaultPriceStale` and the hysteresis — the placeholder is derived from the live quote, nothing is written into the state. Replaces PRD FR-4.2 and the "Price field: defaults" section above.
+- **Colours.** Money on the right of the SL / TP fields is grey (#707070). Summary: `SL` #e78a00, `TP` #089981, amounts #131722, separator #707070. Tokens `--color-sl`, `--color-tp`, `--color-warning` (+ `--nt-summary-amount`) in `styles/tokens.css`.
+- **SL menu** shows Risk USD / Risk % balance **disabled** (with a tooltip) while Quantity is in a risk mode, as in the Figma card "Risk picked in Quantity field" (was hidden). **The TP menu does not change**: its Reward items are no longer disabled in risk modes (they were, in the earlier risk-linkage step). Switching Quantity to a risk mode moves an SL in Risk units to Price with the same level; TP is left alone.
+- Texts: `Limit price` / `Stop price` (sentence case), `% of price`; the "Enter price" fallback in empty SL / TP is "—" (normally a numeric placeholder shows).
+
+**Already in place before this step** (checked against the prompt, no change needed): quantity placeholder 1 · `201.57 USD`, "Available margin …", SL / TP numeric placeholders and grey money (only with a quantity), no "Real risk", `Margin … USD · Tick … USD`, "+ Add level" only with TP on, U+2212 minus, "Needs SL" / "—" in menus.
+
+**Not done / differences from the prompt**
+
+- **Stop Limit** (prompt section 3: tab, engine, toasts, tests) is **not built**. The user said in the first message of this task that the Stop Limit tab stays in Figma only. The engine, `OrderType` and the tabs are unchanged.
+- **Panel width.** The Figma frames are 360 px wide; the prototype stays at **320 px** (resizable 300–480, an earlier agreed decision), so widths differ by 40 px. The inner metrics (field 34, radius 6, paddings 16, footer block) follow the frames.
+- **Section 8 (Market · Risk USD + SL):** the Quantity field keeps the unit in the label ("Risk USD ▾"), so the left value is `407.00` without " USD"; right `100 shares`.
+- Figma "Limit · Filled" shows `Margin 398.00 · Tick 1.00 USD`; we show `Margin 398.00 USD · Tick 1.00 USD` (currency always, per the prompt).

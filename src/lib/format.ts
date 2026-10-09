@@ -31,6 +31,12 @@ export function priceInput(n: number, spec: Pick<SymbolSpec, 'tickSize'>): strin
   return n.toFixed(pricePrecision(spec));
 }
 
+/** Signed price offset as typed in the field: "−2.57" (U+2212), "2.57", "0.00". */
+export function offsetInput(n: number, spec: Pick<SymbolSpec, 'tickSize'>): string {
+  const text = Math.abs(n).toFixed(pricePrecision(spec));
+  return n < 0 && Number(text) !== 0 ? `${MINUS}${text}` : text;
+}
+
 export function fmtQty(n: number, spec: Pick<SymbolSpec, 'qtyStep'>): string {
   const d = qtyPrecision(spec);
   return nf(0, d, true).format(n);

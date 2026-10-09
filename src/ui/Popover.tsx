@@ -80,15 +80,25 @@ export function MenuItem({
   disabled,
   onSelect,
   end,
+  title,
 }: {
   children: ReactNode;
   active?: boolean;
+  /** aria-disabled (not native `disabled`), so the item still shows its tooltip and hover hints. */
   disabled?: boolean;
   onSelect: () => void;
   end?: ReactNode;
+  title?: string;
 }) {
   return (
-    <button type="button" className={`${styles.item} ${active ? styles.active : ''}`} disabled={disabled} onClick={onSelect} role="menuitem">
+    <button
+      type="button"
+      className={`${styles.item} ${active ? styles.active : ''}`}
+      aria-disabled={disabled || undefined}
+      title={title}
+      onClick={() => !disabled && onSelect()}
+      role="menuitem"
+    >
       <span className={styles.itemLabel}>{children}</span>
       {end !== undefined && <span className={styles.itemEnd}>{end}</span>}
     </button>

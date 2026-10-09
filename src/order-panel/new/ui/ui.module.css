@@ -103,8 +103,8 @@
 .sideValue {
   font-size: 16px;
   line-height: 24px;
-  letter-spacing: var(--nt-tracking-16);
-  font-weight: var(--nt-font-weight-medium);
+  /* As in the current panel: regular, no tracking (Figma's Medium reads too heavy in Chrome). */
+  font-weight: 400;
 }
 
 .spread {
@@ -212,6 +212,39 @@
 
 .menuEnd {
   color: var(--nt-text-secondary);
+}
+
+/* ⓘ next to a unit in the menu: the formula behind its live value */
+.menuInfo {
+  position: relative;
+  display: inline-flex;
+  opacity: 0.6;
+  cursor: help;
+}
+
+.menuInfo:hover {
+  opacity: 1;
+}
+
+.menuInfoTip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--nt-fill-extra-bold);
+  color: var(--nt-text-inverse);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.menuInfo:hover .menuInfoTip {
+  display: block;
 }
 
 /* ---------- ValueField ---------- */
@@ -328,6 +361,10 @@
   flex: none;
 }
 
+.suffixPlaceholder {
+  opacity: 0.5;
+}
+
 .valueRight {
   flex: none;
   max-width: 60%;
@@ -350,7 +387,13 @@
 }
 
 .toneWarning {
-  color: var(--nt-text-warning);
+  color: var(--color-warning);
+}
+
+/* grey value of an empty / switched-off field (placeholder state) */
+.toneMuted {
+  color: var(--nt-text-secondary);
+  opacity: 0.6;
 }
 
 /* ---------- FieldCaption ---------- */
@@ -367,7 +410,7 @@
 }
 
 .captionWarning {
-  color: var(--nt-text-warning);
+  color: var(--color-warning);
 }
 
 /* ---------- Switch ---------- */
@@ -496,6 +539,39 @@
   padding: 4px;
   border-radius: var(--nt-radius-footer);
   background: var(--nt-fill-thin);
+}
+
+.summaryLabelSl {
+  color: var(--color-sl);
+}
+
+.summaryLabelTp {
+  color: var(--color-tp);
+}
+
+.summaryAmount {
+  color: var(--nt-summary-amount);
+}
+
+.summarySep {
+  color: var(--nt-text-secondary);
+}
+
+/* ⇆ inside the price field: switches price ↔ offset */
+.swap {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--nt-text-secondary);
+}
+
+.swap:hover {
+  color: var(--nt-text);
+  background: var(--nt-fill-hover);
 }
 
 .summary {

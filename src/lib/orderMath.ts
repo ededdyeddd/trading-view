@@ -36,6 +36,12 @@ export function floorToStep(qty: number, step: number): number {
   return Number((Math.floor(qty / step + EPS) * step).toFixed(d));
 }
 
+/** Rounds up to `digits` decimals, ignoring float noise (4.03 stays 4.03). Used where a typed amount must still buy one step. */
+export function ceilTo(n: number, digits: number): number {
+  const f = 10 ** digits;
+  return Math.ceil(n * f - 1e-6) / f;
+}
+
 export function round2(n: number): number {
   return Math.round((n + Math.sign(n) * EPS) * 100) / 100;
 }
@@ -114,6 +120,15 @@ export function checkPrice(type: OrderType, side: Side, price: number, bid: numb
   // stop
   const invalid = side === 'buy' ? price <= ask : price >= bid;
   return { fillsNow: false, invalid };
+}
+
+/** Commit-time state of a limit / stop price (redesign): it would fill or trigger at once. */
+export type PriceStatus = 'ok' | 'fillsNow' | 'triggersNow';
+
+/** Buy Limit ≥ Ask / Sell Limit ≤ Bid fills now; Buy Stop ≤ Ask / Sell Stop ≥ Bid triggers now. */
+export function priceStatus(type: 'limit' | 'stop', side: Side, price: number, bid: number, ask: number): PriceStatus {
+  if (type === 'limit') return (side === 'buy' ? price >= ask : price <= bid) ? 'fillsNow' : 'ok';
+  return (side === 'buy' ? price <= ask : price >= bid) ? 'triggersNow' : 'ok';
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +333,36 @@ export function offsetDirection(type: 'limit' | 'stop', side: Side): 1 | -1 {
   return below ? -1 : 1;
 }
 
-/** Limit/stop price from a positive tick offset ("257 ticks below Ask"). */
-export function priceFromOffset(type: 'limit' | 'stop', side: Side, bid: number, ask: number, ticks: number, tickSize: number): number {
-  return roundToTick(marketRef(side, bid, ask) + offsetDirection(type, side) * Math.abs(ticks) * tickSize, tickSize);
+/** Share of the price a default limit / stop keeps away from Ask / Bid, so it does not execute at once: Limit 1%, Stop 1.5%. */
+export const DEFAULT_OFFSET_PCT = { limit: 1, stop: 1.5 } as const;
+
+/** Rounds up to the step, ignoring float noise. */
+export function ceilToStep(n: number, step: number): number {
+  const d = decimals(step);
+  return Number((Math.ceil(n / step - EPS) * step).toFixed(d));
+}
+
+/** Round-number grid of the default price: 1% of the price's order of magnitude (201.57 → 1.00, 42.38 → 0.10, 1.0852 → 0.01). */
+export function niceStep(ref: number, tickSize: number): number {
+  return Math.max(tickSize, 10 ** Math.floor(Math.log10(ref)) / 100);
+}
+
+/**
+ * Default limit / stop price (the grey placeholder of an empty price field): Ask (buys) / Bid (sells) moved
+ * DEFAULT_OFFSET_PCT to the resting side, rounded away from the market to the nice step.
+ * AAPL Ask 201.57 / Bid 201.56 → Buy Limit 199.00, Sell Limit 204.00, Buy Stop 205.00, Sell Stop 198.00.
+ */
+export function defaultOrderPrice(type: 'limit' | 'stop', side: Side, bid: number, ask: number, tickSize: number): number {
+  const ref = marketRef(side, bid, ask);
+  const offset = (ref * DEFAULT_OFFSET_PCT[type]) / 100;
+  const step = niceStep(ref, tickSize);
+  const raw = offsetDirection(type, side) < 0 ? floorToStep(ref - offset, step) : ceilToStep(ref + offset, step);
+  return roundToTick(raw, tickSize);
+}
+
+/** Limit / stop price from a signed offset in price from Ask / Bid ("−2.57" below Ask). */
+export function priceFromOffset(side: Side, bid: number, ask: number, offset: number, tickSize: number): number {
+  return roundToTick(marketRef(side, bid, ask) + offset, tickSize);
 }
 
 /** Money at risk per 1 unit between entry and stop loss (account currency): "Risk is below 1 share (4.07 USD)". */
@@ -351,4 +393,18 @@ export function weightedAverage(prices: number[], weights: number[]): number | n
   const w = weights.reduce((a, b) => a + b, 0);
   if (!(w > 0)) return null;
   return prices.reduce((a, p, i) => a + p * weights[i], 0) / w;
+}
+
+/** Share of the balance a new risk input starts with (Risk USD is rounded to whole USD). */
+export const DEFAULT_RISK_PCT = 1;
+
+/** Default risk input in a risk unit: 1% of balance — "1000" USD at 99,953.90, or "1.00" %. Never derived from margin. */
+export function defaultRiskInput(unit: 'riskMoney' | 'riskBalancePercent', balance: number): string {
+  return unit === 'riskMoney' ? String(Math.round((balance * DEFAULT_RISK_PCT) / 100)) : DEFAULT_RISK_PCT.toFixed(2);
+}
+
+/** A risk typed in one risk unit expressed in the other (`to`). */
+export function convertRisk(value: number, to: 'riskMoney' | 'riskBalancePercent', balance: number): number {
+  if (!(balance > 0)) return 0;
+  return to === 'riskMoney' ? (value * balance) / 100 : (value / balance) * 100;
 }

@@ -24,11 +24,11 @@
   color: var(--color-text-primary);
 }
 
-.item:hover:not(:disabled) {
+.item:hover:not([aria-disabled='true']) {
   background: var(--color-bg-hover);
 }
 
-.item:disabled {
+.item[aria-disabled='true'] {
   color: var(--color-text-disabled);
   cursor: default;
 }

@@ -2,19 +2,22 @@
  * deriveTicket — pure function from raw ticket input + market + account to everything
  * an order panel renders and submits. Both panel variants (current / new) read only this.
  */
-import type { SymbolSpec } from '../config/symbols';
+import { pricePrecision, type SymbolSpec } from '../config/symbols';
 import { computeExpiry } from '../engine/paperEngine';
 import type { OrderDraft } from '../engine/types';
 import { parseNum, priceInput as fmtPriceInput } from '../lib/format';
 import {
   checkPrice,
+  defaultExitPrice,
   defaultLevelPercents,
+  defaultOrderPrice,
   describeExit,
   exceedsMargin,
   exitDirection,
   marginFor,
   marketRef,
   maxQtyForMargin,
+  moneyPerPoint,
   offsetDirection,
   offsetTicks,
   priceFromOffset,
@@ -28,15 +31,27 @@ import {
   tickValue,
   tradeValue,
   weightedAverage,
+  exitValueInUnit,
   type ExitKind,
   type ExitLevel,
   type ExitUnit,
 } from '../lib/orderMath';
 import type { Quote } from '../market/types';
-import type { DisabledReason, ExitState, ExitView, TicketState, TicketView, TpLevelView } from './types';
+import type { DisabledReason, ExitState, ExitView, QtyView, TicketState, TicketView, TpLevelView } from './types';
 
 /** Production defaults: TP 75 ticks, SL 25 ticks from entry. */
 export const DEFAULT_EXIT_TICKS: Record<ExitKind, number> = { tp: 75, sl: 25 };
+
+/** Redesign defaults of a level: SL 2% and TP 4% from entry (the placeholder, and what switching it on fills). */
+export const NEW_EXIT_DEFAULT_PERCENT: Record<ExitKind, number> = { sl: 2, tp: 4 };
+
+/** Text a level has in an input unit: prices to tick precision, ticks as integers, the rest to 2 decimals. */
+export function exitInputText(level: ExitLevel, unit: ExitUnit, spec: SymbolSpec): string {
+  const v = exitValueInUnit(level, unit);
+  if (unit === 'price') return v.toFixed(pricePrecision(spec));
+  if (unit === 'ticks') return String(v);
+  return v.toFixed(2);
+}
 
 /** Rules that differ between the production control and the redesign. */
 export type TicketRules = {
@@ -76,23 +91,22 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   if (state.type === 'market') {
     entry = ready ? marketRef(state.side, bid, ask) : null;
   } else {
-    const raw = parseNum(state.priceInput);
     const unit = state.priceUnit ?? 'price';
-    let value: number | null = null;
-    if (unit === 'ticks') value = raw > 0 && ready ? priceFromOffset(state.type, state.side, bid, ask, raw, spec.tickSize) : null;
-    else value = raw > 0 ? roundToTick(raw, spec.tickSize) : null;
+    const value = priceValue(state, quote, spec);
     const check = value !== null && ready ? checkPrice(state.type, state.side, value, bid, ask) : { fillsNow: false, invalid: false };
     const ref = ready ? marketRef(state.side, bid, ask) : 0;
+    const placeholder = ready ? defaultOrderPrice(state.type, state.side, bid, ask, spec.tickSize) : 0;
     price = {
       unit,
       value,
-      placeholder: ref,
+      placeholder,
       offset: value !== null && ready ? roundToTick(value - ref, spec.tickSize) : null,
       direction: offsetDirection(state.type, state.side) < 0 ? 'below' : 'above',
       offsetTicks: value !== null && ready ? offsetTicks(value, state.side, bid, ask, spec.tickSize) : null,
       ref: state.side === 'buy' ? 'Ask' : 'Bid',
       fillsNow: check.fillsNow,
       invalid: check.invalid,
+      status: state.priceStatus,
     };
     entry = value;
   }
@@ -109,7 +123,8 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
       slDistanceForQty = lvl && !lvl.invalid ? lvl.distance : null;
     }
   }
-  const qtyPrice = entry ?? (ready ? marketRef(state.side, bid, ask) : 0);
+  // Without a limit / stop price, quantity is valued at the suggested price (the price placeholder).
+  const qtyPrice = entry ?? (price && price.placeholder > 0 ? price.placeholder : ready ? marketRef(state.side, bid, ask) : 0);
   const qtyRes =
     qtyPrice > 0
       ? resolveQty({ unit: state.qtyUnit, value: qtyValue, price: qtyPrice, balance, slDistance: slDistanceForQty, spec })
@@ -117,8 +132,10 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   const units = qtyRes.qty;
 
   // 3. Exits with the final quantity -------------------------------------------
-  const sl = exitView('sl', state.sl, state, entry, units, balance, spec, slCircular);
-  const tp = exitView('tp', state.tp, state, entry, units, balance, spec, false);
+  // Placeholders of exits count from the entry; a limit without a price counts from the price placeholder.
+  const placeholderEntry = entry ?? (price && price.placeholder > 0 ? price.placeholder : null);
+  const sl = exitView('sl', state.sl, state, entry, units, balance, spec, slCircular, placeholderEntry);
+  const tp = exitView('tp', state.tp, state, entry, units, balance, spec, false, placeholderEntry);
   const slDistance = sl.level && !sl.level.invalid ? sl.level.distance : null;
 
   const eq = qtyEquivalents(units, qtyPrice, balance, slDistance, spec);
@@ -134,6 +151,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     riskPerUnit: perUnit,
     riskBelowOne: riskSized && qtyValue > 0 && units === 0 && slDistanceForQty !== null,
     maxUnits: qtyPrice > 0 ? maxQtyForMargin(ctx.availableFunds, qtyPrice, spec) : 0,
+    placeholder: qtyPlaceholder(spec, qtyPrice, balance, state.sl.enabled && !slCircular ? slDistance : null),
   };
 
   // 3b. Take-profit levels (TP 1 + up to two extra) ------------------------------
@@ -156,6 +174,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
       balance,
       spec,
       false,
+      null,
     );
     tpLevels.push({ input: l.input, level: v.level, percent: percents[i + 1], qty: levelQty[i + 1], money: null, error: v.error });
   });
@@ -234,6 +253,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     riskReward: rr,
     expiresAt,
     availableFunds: ctx.availableFunds,
+    balance,
     marginExceeded: units > 0 && exceedsMargin(qty.margin, ctx.availableFunds),
     canSubmit: draft !== null,
     disabledReason: reason,
@@ -241,6 +261,18 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     draft,
     opensAt,
   };
+}
+
+/** Limit / stop price the input stands for: an absolute price, or a signed price offset from Ask / Bid (0 = at the market). */
+export function priceValue(state: TicketState, quote: Quote | undefined, spec: SymbolSpec): number | null {
+  if (state.type === 'market') return null;
+  const raw = parseNum(state.priceInput);
+  if ((state.priceUnit ?? 'price') === 'offset') {
+    if (!Number.isFinite(raw) || !quote) return null;
+    const price = priceFromOffset(state.side, quote.bid, quote.ask, raw, spec.tickSize);
+    return price > 0 ? price : null;
+  }
+  return raw > 0 ? roundToTick(raw, spec.tickSize) : null;
 }
 
 function exitLevel(kind: ExitKind, ex: ExitState, state: TicketState, entry: number, qty: number, balance: number, spec: SymbolSpec): ExitLevel | null {
@@ -254,6 +286,43 @@ function exitLevel(kind: ExitKind, ex: ExitState, state: TicketState, entry: num
   return resolveExit({ kind, side: state.side, entry, qty, unit: ex.unit, value, balance, spec });
 }
 
+/** Minimum quantity in every unit (risk at the stop-loss distance when there is one). */
+function qtyPlaceholder(spec: SymbolSpec, price: number, balance: number, slDistance: number | null): QtyView['placeholder'] {
+  if (!(price > 0)) return null;
+  const value = tradeValue(spec.minQty, price, spec);
+  const risk = slDistance !== null && slDistance > 0 ? slDistance * moneyPerPoint(spec.minQty, spec, price) : null;
+  return {
+    units: spec.minQty,
+    value,
+    balancePercent: balance > 0 ? (value / balance) * 100 : 0,
+    riskMoney: risk,
+    riskBalancePercent: risk !== null && balance > 0 ? (risk / balance) * 100 : null,
+  };
+}
+
+/** Grey value of an empty or switched-off level: the last typed value, else the default from `entry`. */
+function exitPlaceholder(
+  kind: ExitKind,
+  ex: ExitState,
+  side: TicketState['side'],
+  entry: number | null,
+  qty: number,
+  balance: number,
+  spec: SymbolSpec,
+): Pick<ExitView, 'placeholder' | 'placeholderLevel'> {
+  if (entry === null) return { placeholder: '', placeholderLevel: null };
+  const needsQty = MONEY_UNITS.includes(ex.unit) && !(qty > 0);
+  if (ex.input.trim() !== '') {
+    const value = parseNum(ex.input);
+    const level = Number.isFinite(value) && !needsQty ? resolveExit({ kind, side, entry, qty: qty > 0 ? qty : 1, unit: ex.unit, value, balance, spec }) : null;
+    return { placeholder: ex.input, placeholderLevel: level };
+  }
+  if (needsQty) return { placeholder: '', placeholderLevel: null };
+  const price = defaultExitPrice(kind, side, entry, NEW_EXIT_DEFAULT_PERCENT[kind], spec.tickSize);
+  const level = describeExit(kind, side, entry, qty > 0 ? qty : 1, price, balance, spec);
+  return { placeholder: exitInputText(level, ex.unit, spec), placeholderLevel: level };
+}
+
 function exitView(
   kind: ExitKind,
   ex: ExitState,
@@ -263,8 +332,10 @@ function exitView(
   balance: number,
   spec: SymbolSpec,
   circular: boolean,
+  placeholderEntry: number | null,
 ): ExitView {
-  if (entry === null) return { enabled: ex.enabled, unit: ex.unit, input: ex.input, level: null, error: null };
+  const ph = exitPlaceholder(kind, ex, state.side, placeholderEntry, qty, balance, spec);
+  if (entry === null) return { enabled: ex.enabled, unit: ex.unit, input: ex.input, level: null, error: null, ...ph };
   // Money units need a quantity; with zero quantity show the level for 1 unit so the field is not blank.
   const level = exitLevel(kind, ex, state, entry, qty > 0 ? qty : 1, balance, spec);
   const input = !ex.touched && ex.unit === 'price' && level ? fmtPriceInput(level.price, spec) : ex.input;
@@ -275,7 +346,7 @@ function exitView(
     else if (level.invalid)
       error = `${kind === 'sl' ? 'Stop loss' : 'Take profit'} must be ${(kind === 'sl') === (state.side === 'buy') ? 'below' : 'above'} entry price`;
   }
-  return { enabled: ex.enabled, unit: ex.unit, input, level: qty > 0 || !MONEY_UNITS.includes(ex.unit) ? level : null, error };
+  return { enabled: ex.enabled, unit: ex.unit, input, level: qty > 0 || !MONEY_UNITS.includes(ex.unit) ? level : null, error, ...ph };
 }
 
 function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, tp: ExitView): string {
@@ -298,7 +369,7 @@ function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, 
     case 'invalid-exit':
       return sl.error ?? tp.error ?? 'Check exits';
     case 'risk-below-one':
-      return 'Risk is below 1 share';
+      return 'Risk too small for 1 share';
     case 'not-enough-margin':
       return 'Not enough margin';
   }

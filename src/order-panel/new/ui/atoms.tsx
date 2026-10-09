@@ -323,6 +323,7 @@ export function ValueField({
         disabled && s.fieldDisabled,
         disabled && onActivate && s.fieldActivatable,
         placeholderStyle === 'text' && s.placeholderText,
+        swap && s.fieldSwap,
       )}
       onMouseDown={(e) => {
         if (disabled) {

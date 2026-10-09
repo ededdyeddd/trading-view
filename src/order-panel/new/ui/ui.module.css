@@ -557,6 +557,17 @@
   color: var(--nt-text-secondary);
 }
 
+/* With a ⇆ the value and the right text take equal halves, so the button sits in the middle of the field (Figma) */
+.fieldSwap .valueLeft {
+  flex: 1 1 0;
+}
+
+.fieldSwap .valueRight {
+  flex: 1 1 0;
+  max-width: none;
+  text-align: right;
+}
+
 /* ⇆ inside the price field: switches price ↔ offset */
 .swap {
   flex: none;

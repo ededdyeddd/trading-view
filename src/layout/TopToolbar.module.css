@@ -1,0 +1,169 @@
+.toolbar {
+  height: var(--toolbar-height);
+  display: flex;
+  align-items: stretch;
+  background: var(--color-bg-panel);
+  font-size: var(--font-size-md);
+  min-width: 0;
+}
+
+.avatarCell {
+  width: var(--left-toolbar-width);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f7a35c, #e05a47);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.btn {
+  height: 30px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-xs);
+  flex: none;
+  color: var(--color-text-primary);
+}
+
+.btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.icon {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+.tf {
+  padding: 0 7px;
+}
+
+.selected {
+  color: var(--color-blue-text);
+  background: var(--color-bg-hover);
+}
+
+.sep {
+  width: 1px;
+  height: 22px;
+  background: var(--color-divider);
+  margin: 0 4px;
+  flex: none;
+}
+
+.spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.symbolBtn {
+  height: 30px;
+  min-width: 120px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 15px;
+  background: var(--color-bg-hover);
+  flex: none;
+}
+
+.symbolBtn:hover {
+  background: var(--color-bg-active);
+}
+
+.symbolText {
+  font-weight: 600;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  flex: none;
+}
+
+.trade {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+}
+
+.trade:hover {
+  background: var(--color-bg-hover);
+}
+
+.upgrade {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--color-text-primary);
+  color: var(--color-bg-panel);
+}
+
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--color-divider);
+  margin-bottom: 4px;
+  width: 360px;
+}
+
+.searchInput {
+  border: 0;
+  outline: none;
+  flex: 1;
+  background: transparent;
+}
+
+.searchList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.searchSym {
+  font-weight: 600;
+  min-width: 72px;
+}
+
+.searchName {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}

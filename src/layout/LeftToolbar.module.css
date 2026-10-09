@@ -1,0 +1,40 @@
+.toolbar {
+  width: var(--left-toolbar-width);
+  height: 100%;
+  background: var(--color-bg-panel);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  overflow: hidden;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.group + .group {
+  border-top: 1px solid var(--color-divider);
+}
+
+.btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-primary);
+}
+
+.btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.active {
+  background: var(--color-bg-hover);
+}

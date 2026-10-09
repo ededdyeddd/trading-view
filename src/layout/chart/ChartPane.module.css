@@ -1,0 +1,183 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-bg-panel);
+}
+
+.chartArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.overlay {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 80px;
+  overflow: hidden;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.overlay > * {
+  pointer-events: auto;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.legendTitle {
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+}
+
+.marketDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-green);
+  margin-right: 6px;
+}
+
+.ohlc {
+  display: inline-flex;
+  gap: 3px;
+  align-items: baseline;
+}
+
+.ohlc b {
+  font-weight: 400;
+  margin-right: 4px;
+}
+
+.up {
+  color: var(--color-green-text);
+}
+
+.down {
+  color: var(--color-red-text);
+}
+
+.volRow {
+  font-size: var(--font-size-sm);
+  padding-left: 2px;
+}
+
+.volRow b {
+  font-weight: 400;
+}
+
+/* quick trade */
+.quickTrade {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 2px;
+}
+
+.qtBtn {
+  width: 65px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-sm);
+  line-height: 15px;
+}
+
+.qtSell {
+  background: var(--color-red);
+}
+
+.qtSell:hover {
+  background: var(--color-red-hover);
+}
+
+.qtBuy {
+  background: var(--color-blue);
+}
+
+.qtBuy:hover {
+  background: var(--color-blue-hover);
+}
+
+.qtLabel {
+  font-size: var(--font-size-xs);
+  line-height: 13px;
+}
+
+.qtSpread {
+  min-width: 39px;
+  text-align: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+}
+
+/* bottom range bar */
+.rangeBar {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 2px;
+  border-top: 1px solid var(--color-divider);
+  font-size: var(--font-size-md);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.rangeBtn {
+  padding: 4px 6px;
+  border-radius: var(--radius-xs);
+}
+
+button.rangeBtn:hover,
+.iconBtn:hover {
+  background: var(--color-bg-hover);
+}
+
+.iconBtn {
+  width: 32px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+}
+
+.sep {
+  width: 1px;
+  height: 20px;
+  background: var(--color-divider);
+  margin: 0 4px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.clock {
+  padding: 0 6px;
+}

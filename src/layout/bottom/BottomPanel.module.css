@@ -1,0 +1,343 @@
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-size-md);
+}
+
+.header {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 8px;
+  gap: 2px;
+}
+
+.brokerTab {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: var(--radius-xs);
+}
+
+.brokerTab:hover,
+.iconBtn:hover {
+  background: var(--color-bg-hover);
+}
+
+.brokerDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-green);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.tradeBtn {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  margin-right: 6px;
+}
+
+.tradeBtn:hover {
+  background: var(--color-bg-hover);
+}
+
+.iconBtn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0 12px;
+}
+
+.accountSelect {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.accountSelect small {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 32px;
+  row-gap: 8px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.metricValue {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  flex: none;
+  padding-bottom: 8px;
+  overflow-x: auto;
+}
+
+.tab {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--color-bg-neutral);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background: var(--color-bg-active);
+}
+
+.tabActive,
+.tabActive:hover {
+  background: var(--color-tab-underline);
+  color: var(--color-text-inverse);
+}
+
+.count {
+  font-size: var(--font-size-xs);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--color-blue);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tableWrap {
+  min-width: 100%;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-bg-panel);
+  text-align: left;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  height: 32px;
+  padding: 0 12px 0 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.table td {
+  height: 34px;
+  padding: 0 12px 0 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.table tbody tr:hover {
+  background: var(--color-bg-hover);
+}
+
+.empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.symbolLink {
+  font-weight: 600;
+  color: var(--color-blue-text);
+}
+
+.buy {
+  color: var(--color-blue-text);
+}
+
+.sell {
+  color: var(--color-red-text);
+}
+
+.pos {
+  color: var(--color-green-text);
+}
+
+.neg {
+  color: var(--color-red-text);
+}
+
+.warn {
+  color: var(--color-orange);
+}
+
+.muted {
+  color: var(--color-text-secondary);
+}
+
+.actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rowBtn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  color: var(--color-text-secondary);
+}
+
+.rowBtn:hover {
+  background: var(--color-bg-active);
+  color: var(--color-text-primary);
+}
+
+.modify {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+  width: 220px;
+  font-size: var(--font-size-sm);
+}
+
+.modifyTitle {
+  font-weight: 600;
+}
+
+.modify label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-secondary);
+}
+
+.modify input {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--color-bg-panel);
+  outline: none;
+}
+
+.modify input:focus {
+  border-color: var(--color-border-focus);
+}
+
+.modify input:disabled {
+  background: var(--color-bg-input-disabled);
+  color: var(--color-text-disabled);
+}
+
+.modifySubmit {
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-blue);
+  color: #fff;
+}
+
+.summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+  padding: 4px 0 16px;
+}
+
+.summaryList {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, auto));
+  column-gap: 48px;
+  row-gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.summaryList > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.summaryList dt {
+  color: var(--color-text-secondary);
+}
+
+.summaryList dd {
+  margin: 0;
+}
+
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.resetBtn:hover {
+  background: var(--color-bg-hover);
+}

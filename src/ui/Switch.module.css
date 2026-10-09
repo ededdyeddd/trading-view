@@ -1,0 +1,74 @@
+.track {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--color-switch-off);
+  flex: none;
+  transition: background 0.15s;
+}
+
+.thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.on {
+  background: var(--color-switch-on);
+}
+
+.on .thumb {
+  transform: translateX(18px);
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-tab-underline);
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex: none;
+}
+
+.checkbox input:checked + .box {
+  background: var(--color-tab-underline);
+}
+
+.checkbox input:focus-visible + .box {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.disabled {
+  cursor: default;
+  color: var(--color-text-disabled);
+}
+
+.disabled .box {
+  border-color: var(--color-text-disabled);
+}

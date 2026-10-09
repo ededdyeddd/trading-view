@@ -1,0 +1,36 @@
+.switch {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 960;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 3px 3px 10px;
+  border-radius: 18px;
+  background: var(--color-bg-panel);
+  box-shadow: var(--shadow-popup);
+  font-size: 12px;
+}
+
+.label {
+  color: var(--color-text-secondary);
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.option {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  color: var(--color-text-primary);
+}
+
+.option:hover:not(.active) {
+  background: var(--color-bg-hover);
+}
+
+.active {
+  background: var(--color-text-primary);
+  color: var(--color-bg-panel);
+}

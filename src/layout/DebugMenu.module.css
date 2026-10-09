@@ -1,7 +1,7 @@
 .root {
   position: fixed;
   left: 12px;
-  bottom: 12px;
+  bottom: 56px; /* above the panel switch */
   z-index: 950;
   display: flex;
   flex-direction: column;

@@ -19,7 +19,9 @@ const PANELS = ['current', 'new'] as const;
  */
 export const FEED_MODE: FeedMode = pick(params.get('feed') ?? import.meta.env.VITE_FEED, FEEDS, 'sim');
 
+/** Default order panel; the floating switch can change it at runtime (see store/variantStore). */
 export const PANEL_VARIANT: PanelVariant = pick(params.get('panel') ?? import.meta.env.VITE_PANEL, PANELS, 'current');
+export const PANEL_FROM_URL = params.has('panel');
 
 export const DEBUG = params.get('debug') === '1';
 
@@ -44,9 +46,3 @@ export const CHART_LINES = params.get('chartLines') === '1';
 
 /** Deterministic simulator seed (?seed=…), used by study scenarios. */
 export const SEED: number | null = params.get('seed') !== null ? Number(params.get('seed')) || 0 : null;
-
-/** Usability study: `?study=1` setup screen, `?study=run` a scenario run, `?study=done` the summary. */
-export const STUDY: 'setup' | 'run' | 'done' | null =
-  params.get('study') === '1' ? 'setup' : params.get('study') === 'run' ? 'run' : params.get('study') === 'done' ? 'done' : null;
-export const STUDY_PID = params.get('pid') ?? '';
-export const STUDY_SCENARIO = Number(params.get('scenario')) || 0;

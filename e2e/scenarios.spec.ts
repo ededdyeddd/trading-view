@@ -1,32 +1,26 @@
 /**
- * The three study scenarios (PRD, Appendix C, block 9) in both panels, end to end:
- * study setup → run → submit through the panel UI → Done → auto-check says "yes".
- * Also compares the time to submit the Market order (scenario 1) between the panels.
+ * The three test scenarios (PRD, Appendix C) in both panels, end to end: open the ticket, fill it through
+ * the panel UI, submit, and check the order the paper engine received. Plus the floating panel switch.
  */
 import { expect, test, type Page } from '@playwright/test';
 
 type Panel = 'current' | 'new';
+type Order = { side: string; type: string; qty: number; limitPrice?: number; stopLoss?: number; takeProfit?: number; tif: string; role: string };
 
-async function startRun(page: Page, panel: Panel, scenario: 1 | 2 | 3, pid: string) {
-  await page.goto('/?study=1');
+async function open(page: Page, panel: Panel) {
+  await page.goto(`/?panel=${panel}`);
   await page.evaluate(() => localStorage.clear());
-  await page.goto('/?study=1');
-  await page.getByTestId('study-pid').fill(pid);
-  await page.getByTestId(`study-panel-${panel}`).check();
-  // keep only the scenario under test
-  const boxes = page.locator('input[type=checkbox]');
-  for (let i = 0; i < 3; i++) if (i + 1 !== scenario) await boxes.nth(i).uncheck();
-  await page.getByTestId('study-start').click();
-  await expect(page.getByTestId('study-task')).toBeVisible();
-  // open the order ticket from the bottom panel
+  await page.goto(`/?panel=${panel}`);
   await page.getByTestId('bottom-trade').click();
-  await expect(page.getByTestId('order-panel')).toBeVisible();
+  await expect(page.getByTestId('order-panel')).toHaveAttribute('data-variant', panel);
 }
 
-async function finish(page: Page) {
-  await page.getByTestId('study-done').click();
-  await expect(page.getByTestId('study-results')).toBeVisible();
-  return page.evaluate(() => JSON.parse(localStorage.getItem('study:v1') ?? 'null'));
+/** The last entry order the engine accepted. */
+async function lastOrder(page: Page): Promise<Order> {
+  return page.evaluate(() => {
+    const engine = JSON.parse(localStorage.getItem('paper-trading:v1') ?? 'null').engine;
+    return engine.orders.filter((o: { role: string; status: string }) => o.role === 'entry' && o.status !== 'rejected').at(-1);
+  });
 }
 
 async function pickMenu(page: Page, trigger: string, label: string) {
@@ -34,103 +28,120 @@ async function pickMenu(page: Page, trigger: string, label: string) {
   await page.getByRole('menuitem', { name: label, exact: false }).first().click();
 }
 
-const flows: Record<Panel, Record<1 | 2 | 3, (page: Page) => Promise<void>>> = {
-  new: {
-    1: async (page) => {
-      await page.getByTestId('nt-qty').fill('100');
-      await page.getByTestId('nt-sl-toggle').click();
-      await page.getByTestId('nt-sl-input').fill('197.50');
-      await page.getByTestId('nt-tp-toggle').click();
-      await page.getByTestId('nt-tp-input').fill('211.00');
-      await page.getByTestId('nt-submit').click();
-    },
-    2: async (page) => {
-      await page.getByTestId('nt-type-limit').click();
-      await page.getByTestId('nt-price').fill('199.00');
-      await pickMenu(page, 'nt-qty-unit', 'Risk USD');
-      await page.getByTestId('nt-qty').fill('400');
-      await page.getByTestId('nt-qty-caption-action').click(); // "Turn on stop loss to calculate shares"
-      await page.getByTestId('nt-sl-input').fill('195.00');
-      await page.getByTestId('nt-tp-toggle').click();
-      await page.getByTestId('nt-tp-input').fill('207.00');
-      await expect(page.getByTestId('nt-qty-caption')).toHaveText('Real risk 400.00 USD · Margin 398.00 USD');
-      await expect(page.getByTestId('nt-submit')).toContainText('100 AAPL · LMT 199.00 · till');
-      await page.getByTestId('nt-submit').click();
-    },
-    3: async (page) => {
-      await page.getByTestId('nt-side-sell').click();
-      await page.getByTestId('nt-type-limit').click();
-      const bid = Number((await page.getByTestId('nt-side-sell').locator('span').last().innerText()).replace(/,/g, ''));
-      await page.getByTestId('nt-price').fill((bid + 1).toFixed(2));
-      await page.getByTestId('nt-qty').fill('10');
-      await page.getByTestId('nt-submit').click();
-    },
-  },
-  current: {
-    1: async (page) => {
-      await page.getByTestId('type-market').click();
-      await page.getByTestId('qty-input').fill('100');
-      await page.getByTestId('sl-toggle').click();
-      await pickMenu(page, 'sl-unit', 'Price');
-      await page.getByTestId('sl-input').fill('197.50');
-      await page.getByTestId('tp-toggle').click();
-      await page.getByTestId('tp-input').fill('211.00');
-      await page.getByTestId('submit-order').click();
-    },
-    2: async (page) => {
-      await page.getByTestId('type-limit').click();
-      await page.getByTestId('price-input').fill('199.00');
-      await pickMenu(page, 'qty-unit', 'Risk USD');
-      await page.getByTestId('qty-input').fill('400');
-      await page.getByTestId('sl-toggle').click();
-      await pickMenu(page, 'sl-unit', 'Price');
-      await page.getByTestId('sl-input').fill('195.00');
-      await page.getByTestId('tp-toggle').click();
-      await page.getByTestId('tp-input').fill('207.00');
-      await page.getByTestId('submit-order').click();
-    },
-    3: async (page) => {
-      await page.getByTestId('side-sell').click();
-      await page.getByTestId('type-limit').click();
-      const bid = Number((await page.getByTestId('side-sell').locator('span').last().innerText()).replace(/,/g, ''));
-      await page.getByTestId('price-input').fill((bid + 1).toFixed(2));
-      await page.getByTestId('submit-order').click();
-    },
-  },
-};
+async function bid(page: Page, testId: string) {
+  return Number((await page.getByTestId(testId).locator('span').last().innerText()).replace(/,/g, ''));
+}
 
-const timings: Record<Panel, number | null> = { current: null, new: null };
-const all: string[] = [];
+const scenarios: { title: string; flows: Record<Panel, (page: Page) => Promise<number | void>>; check: (o: Order, bidAtSubmit?: number) => void }[] = [
+  {
+    title: '1 · buy 100 AAPL at market, SL 197.50, TP 211.00',
+    flows: {
+      new: async (page) => {
+        await page.getByTestId('nt-qty').fill('100');
+        await page.getByTestId('nt-sl-toggle').click();
+        await page.getByTestId('nt-sl-input').fill('197.50');
+        await page.getByTestId('nt-tp-toggle').click();
+        await page.getByTestId('nt-tp-input').fill('211.00');
+        await page.getByTestId('nt-submit').click();
+      },
+      current: async (page) => {
+        await page.getByTestId('type-market').click();
+        await page.getByTestId('qty-input').fill('100');
+        await page.getByTestId('sl-toggle').click();
+        await pickMenu(page, 'sl-unit', 'Price');
+        await page.getByTestId('sl-input').fill('197.50');
+        await page.getByTestId('tp-toggle').click();
+        await page.getByTestId('tp-input').fill('211.00');
+        await page.getByTestId('submit-order').click();
+      },
+    },
+    check: (o) => expect(o).toMatchObject({ side: 'buy', type: 'market', qty: 100, stopLoss: 197.5, takeProfit: 211 }),
+  },
+  {
+    title: '2 · buy limit 199.00 risking 400 USD, SL 195.00, TP 207.00',
+    flows: {
+      new: async (page) => {
+        await page.getByTestId('nt-type-limit').click();
+        await page.getByTestId('nt-price').fill('199.00');
+        await pickMenu(page, 'nt-qty-unit', 'Risk USD');
+        await page.getByTestId('nt-qty').fill('400');
+        await page.getByTestId('nt-qty-caption-action').click(); // "Turn on stop loss to calculate shares"
+        await page.getByTestId('nt-sl-input').fill('195.00');
+        await page.getByTestId('nt-tp-toggle').click();
+        await page.getByTestId('nt-tp-input').fill('207.00');
+        await expect(page.getByTestId('nt-qty-caption')).toHaveText('Real risk 400.00 USD · Margin 398.00 USD');
+        await expect(page.getByTestId('nt-submit')).toContainText('100 AAPL · LMT 199.00 · till');
+        await page.getByTestId('nt-submit').click();
+      },
+      current: async (page) => {
+        await page.getByTestId('type-limit').click();
+        await page.getByTestId('price-input').fill('199.00');
+        await pickMenu(page, 'qty-unit', 'Risk USD');
+        await page.getByTestId('qty-input').fill('400');
+        await page.getByTestId('sl-toggle').click();
+        await pickMenu(page, 'sl-unit', 'Price');
+        await page.getByTestId('sl-input').fill('195.00');
+        await page.getByTestId('tp-toggle').click();
+        await page.getByTestId('tp-input').fill('207.00');
+        await page.getByTestId('submit-order').click();
+      },
+    },
+    check: (o) => expect(o).toMatchObject({ side: 'buy', type: 'limit', qty: 100, limitPrice: 199, stopLoss: 195, takeProfit: 207, tif: 'week' }),
+  },
+  {
+    title: '3 · sell limit 1 USD above the market for a week',
+    flows: {
+      new: async (page) => {
+        await page.getByTestId('nt-side-sell').click();
+        await page.getByTestId('nt-type-limit').click();
+        await page.getByTestId('nt-price').fill(((await bid(page, 'nt-side-sell')) + 1).toFixed(2));
+        await page.getByTestId('nt-qty').fill('10');
+        const b = await bid(page, 'nt-side-sell');
+        await page.getByTestId('nt-submit').click();
+        return b;
+      },
+      current: async (page) => {
+        await page.getByTestId('side-sell').click();
+        await page.getByTestId('type-limit').click();
+        await page.getByTestId('price-input').fill(((await bid(page, 'side-sell')) + 1).toFixed(2));
+        const b = await bid(page, 'side-sell');
+        await page.getByTestId('submit-order').click();
+        return b;
+      },
+    },
+    check: (o, b) => {
+      expect(o).toMatchObject({ side: 'sell', type: 'limit', tif: 'week' });
+      // the simulated market moves while the fields are filled
+      expect(Math.abs((o.limitPrice ?? 0) - ((b ?? 0) + 1))).toBeLessThanOrEqual(0.25);
+    },
+  },
+];
 
 for (const panel of ['current', 'new'] as const) {
-  for (const scenario of [1, 2, 3] as const) {
-    test(`${panel} · scenario ${scenario}`, async ({ page }) => {
+  for (const s of scenarios) {
+    test(`${panel} · ${s.title}`, async ({ page }) => {
       const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-
-      await startRun(page, panel, scenario, `e2e-${panel}-${scenario}`);
-      await flows[panel][scenario](page);
-      await page.waitForTimeout(300);
-      await page.screenshot({ path: `e2e-results/${panel}-scenario-${scenario}.png` });
-      const session = await finish(page);
-      const run = session.runs[0];
-      expect(run.result, JSON.stringify(run.lastDraft)).toMatchObject({ pass: true, mismatches: [] });
-      expect(run.submits).toBe(1);
-      if (scenario === 1) timings[panel] = run.msOpenToSubmit;
-      all.push(`${panel} · scenario ${scenario}: open → submit ${run.msOpenToSubmit} ms, validation errors ${run.validationErrors}`);
-
-      // the journal exports
-      const csv = await page.evaluate(async () => (await import('/src/study/studyStore.ts')).sessionCsv(JSON.parse(localStorage.getItem('study:v1')!)));
-      expect(csv.split('\n')[1]).toContain(`${panel},${scenario},yes`);
+      await open(page, panel);
+      const b = await s.flows[panel](page);
+      await expect.poll(() => lastOrder(page)).toBeTruthy();
+      s.check(await lastOrder(page), b ?? undefined);
+      await page.screenshot({ path: `e2e-results/${panel}-scenario-${s.title[0]}.png` });
       expect(errors).toEqual([]);
     });
   }
 }
 
-test('Market: time to submit in `new` is not worse than in `current`', async () => {
-  test.skip(timings.current === null || timings.new === null, 'scenario 1 runs did not record timings');
-  console.log(all.join('\n'));
-  console.log(`time open → submit, scenario 1: current ${timings.current} ms, new ${timings.new} ms`);
-  expect(timings.new!).toBeLessThanOrEqual(timings.current!);
+test('floating switch toggles the order panel; the panel is open by default', async ({ page }) => {
+  await open(page, 'current');
+  await page.getByTestId('panel-switch-new').click();
+  await expect(page.getByTestId('order-panel')).toHaveAttribute('data-variant', 'new');
+  await expect(page.getByTestId('nt-type-market')).toHaveAttribute('aria-selected', 'true');
+  await page.getByTestId('panel-switch-current').click();
+  await expect(page.getByTestId('order-panel')).toHaveAttribute('data-variant', 'current');
+  // the choice survives a reload without URL parameters; the order panel is open by default
+  await page.getByTestId('panel-switch-new').click();
+  await page.goto('/');
+  await expect(page.getByTestId('order-panel')).toHaveAttribute('data-variant', 'new');
 });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { logEvent, logFieldChange } from '../analytics/eventLog';
-import { PANEL_VARIANT, type PanelVariant } from '../config/flags';
+import type { PanelVariant } from '../config/flags';
 import { getSpec, pricePrecision, qtyPrecision, type SymbolSpec } from '../config/symbols';
 import type { EngineEvent, TimeInForce } from '../engine/types';
 import { priceInput } from '../lib/format';
@@ -21,6 +21,7 @@ import {
 import { useMarketStore } from '../market/marketStore';
 import { now, useAccountSummary, useTradingStore } from '../store/tradingStore';
 import { uiEvents, useUiStore } from '../store/uiStore';
+import { getVariant, useVariantStore } from '../store/variantStore';
 import { sessionOpensAt } from '../market/session';
 import type { Quote } from '../market/types';
 import { CURRENT_RULES, NEW_RULES, deriveTicket } from './deriveTicket';
@@ -35,7 +36,7 @@ function defaultQty(spec: SymbolSpec): string {
 /** Redesign defaults when a level is switched on: SL 2% and TP 4% from entry. */
 export const NEW_EXIT_DEFAULT_PERCENT: Record<ExitKind, number> = { sl: 2, tp: 4 };
 
-function initialState(symbol: string, variant: PanelVariant = PANEL_VARIANT): TicketState {
+function initialState(symbol: string, variant: PanelVariant = getVariant()): TicketState {
   if (variant === 'new') {
     return {
       symbol,
@@ -126,7 +127,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   setSymbol: (symbol) => {
     if (symbol === get().symbol) return;
     const spec = getSpec(symbol);
-    if (PANEL_VARIANT === 'new') {
+    if (getVariant() === 'new') {
       // Levels are prices of the previous symbol — start the new one clean, keep side/type/units.
       set((s) => ({
         symbol,
@@ -157,7 +158,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     if (type === get().type) return;
     set({ type });
     // The redesign keeps the price empty (placeholder = live Ask/Bid); production pre-fills it.
-    if (PANEL_VARIANT !== 'new') get().ensurePrice();
+    if (getVariant() !== 'new') get().ensurePrice();
     logEvent('type_change', { type });
   },
   setPriceUnit: (unit, view) => {
@@ -262,7 +263,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   setExitEnabled: (kind, enabled, view) => {
     const s = get();
     let input = s[kind].input;
-    if (PANEL_VARIANT === 'new') {
+    if (getVariant() === 'new') {
       input = '';
       if (enabled && view?.entry) {
         const spec = getSpec(s.symbol);
@@ -331,6 +332,13 @@ uiEvents.onTicketOpen.add((source, side) => {
   logEvent('ticket_open', { source, side: side ?? useTicketStore.getState().side, symbol: useTicketStore.getState().symbol });
 });
 uiEvents.onTicketClose.add(() => logEvent('ticket_close'));
+// Switching panels starts the ticket over with that panel's defaults (same symbol).
+useVariantStore.subscribe((s, prev) => {
+  if (s.variant === prev.variant) return;
+  useTicketStore.setState(initialState(useTicketStore.getState().symbol, s.variant));
+  if (s.variant === 'current') useTicketStore.getState().ensurePrice();
+  logEvent('panel_switch', { panel: s.variant });
+});
 useUiStore.subscribe((s, prev) => {
   if (s.symbol !== prev.symbol) {
     useTicketStore.getState().setSymbol(s.symbol);
@@ -347,7 +355,7 @@ export function useOrderTicket() {
   const liveQuote = useMarketStore((s) => s.quotes[state.symbol]);
   const account = useAccountSummary();
   const spec = getSpec(state.symbol);
-  const isNew = PANEL_VARIANT === 'new';
+  const isNew = useVariantStore((s) => s.variant) === 'new';
   // Risk sizing at Market floats with the market: re-derive the quantity at most every 500 ms.
   const throttle = isNew && state.type === 'market' && (state.qtyUnit === 'riskMoney' || state.qtyUnit === 'riskBalancePercent');
   const quote = useThrottled(liveQuote, throttle ? 500 : 0);

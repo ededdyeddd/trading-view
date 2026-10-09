@@ -313,6 +313,16 @@
   color: var(--nt-text-secondary);
 }
 
+/* Disabled inputs swallow mouse events; let the click reach the field so it can turn the level on. */
+.fieldActivatable,
+.fieldActivatable:hover {
+  cursor: text;
+}
+
+.fieldActivatable .input {
+  pointer-events: none;
+}
+
 .suffix {
   color: var(--nt-text-secondary);
   flex: none;

@@ -1,9 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { STUDY } from './config/flags';
-import { StudyBar } from './study/StudyScreens';
 import { BottomPanel } from './layout/bottom/BottomPanel';
 import { ChartPane } from './layout/chart/ChartPane';
 import { DebugMenu } from './layout/DebugMenu';
+import { PanelSwitch } from './layout/PanelSwitch';
 import { LeftToolbar } from './layout/LeftToolbar';
 import { Toasts } from './layout/Toasts';
 import { TopToolbar } from './layout/TopToolbar';
@@ -25,7 +24,6 @@ export function App() {
 
   return (
     <div className={styles.app}>
-      {STUDY === 'run' && <StudyBar />}
       <TopToolbar />
       <div className={styles.body}>
         <LeftToolbar />
@@ -69,6 +67,7 @@ export function App() {
         </div>
       </div>
       <Toasts />
+      <PanelSwitch />
       <DebugMenu />
     </div>
   );

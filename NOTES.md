@@ -139,14 +139,12 @@ Source: `docs/PRD.md` (exported from the PRD doc, Appendix C is the 2b prompt) +
 
 ## Chart lines (`?chartLines=1`, both panels)
 
-Dashed lines: entry (blue, "Buy LMT 100"), SL (red, "SL −400.00 USD"), TP / TP1–3 (green, "+800.00 USD"). The price scale stretches to keep every line in view. A line is dragged with the mouse (±6 px from the line): the panel field updates in its current unit (price, ticks, %, USD), and a level is never dragged past the entry. The study turns the flag on for both panels.
+Dashed lines: entry (blue, "Buy LMT 100"), SL (red, "SL −400.00 USD"), TP / TP1–3 (green, "+800.00 USD"). The price scale stretches to keep every line in view. A line is dragged with the mouse (±6 px from the line): the panel field updates in its current unit (price, ticks, %, USD), and a level is never dragged past the entry. The flag works the same for both panels.
 
-## Study (`?study=1`)
+## Panel switch instead of a study mode
 
-Setup screen: participant ID, panel (Current / New / both in random order), scenarios 1–3. Each run has its own URL: `?study=run&pid=…&panel=…&scenario=…&seed=…&chartLines=1`. A run starts from a clean paper account, and the simulator seed is fixed per scenario (1001/1002/1003), so the market repeats. The strip above the interface shows the task, a timer, the submit count and **Done**. Done auto-checks the last submitted `OrderDraft` (side, type, price, quantity ±1, SL, TP, time in force) and opens the next run. The results screen shows a table and exports JSON/CSV; the same exports are in the debug menu (`?debug=1`). Metrics: open → submit time, run start → submit time, submits, validation errors (`validation_error` + engine rejections), cancels/closes.
-
-Scenario 3 ("1 USD above the market") is checked against the Bid at the moment of submit (logged with the `submit` event) with a ±0.25 tolerance (the simulated market moves while the participant types).
+A study mode with its own URLs (`?study=1`, a task strip, Done, a timer, result export) was built and then removed at the designer's request: time and metrics are not collected for now. Instead, a floating **Order panel: Current / New** switch sits in the bottom-left corner. It switches panels without a reload, the ticket starts over with the chosen panel's defaults (the account is untouched), and the choice is kept in `localStorage`, while `?panel=` takes priority. The order panel (Trade) is open when the app loads. The ticket event log (`?debug=1`) stays and records `panel_switch`.
 
 ## e2e (Playwright, `npm run e2e`)
 
-`e2e/scenarios.spec.ts`: 3 scenarios × 2 panels through the real study flow (setup → run → panel UI → Done → auto-check "yes" → CSV), plus a check that the console has no errors. The final test compares open → submit time for Market (scenario 1): on the last run `current` 400 ms, `new` 234 ms.
+`e2e/scenarios.spec.ts`: 3 scenarios × 2 panels — fill the ticket through the panel UI, submit, check the order the engine accepted (side, type, price, quantity, SL, TP, time in force), and check that the console has no errors. Plus a test of the floating switch and of the panel being open by default.

@@ -362,6 +362,7 @@ function ExitBlock({ kind, ticket }: { kind: ExitKind; ticket: OrderTicket }) {
         step={step}
         decimals={decimals}
         disabled={!ex.enabled}
+        onActivate={() => t.setExitEnabled(kind, true)}
         invalid={ex.enabled && !!ex.error}
         error={ex.error}
         right={<SlotDropdown value={altText.value} unit={altText.unit} current={alt} onChange={setAltPick} disabled={!ex.enabled} options={altOptions} />}

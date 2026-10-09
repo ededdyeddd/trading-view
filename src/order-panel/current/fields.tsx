@@ -1,5 +1,5 @@
 import { ArrowLeftRight, ChevronDown, ChevronUp } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { MenuItem, Popover } from '../../ui/Popover';
 import styles from './CurrentOrderPanel.module.css';
 
@@ -87,15 +87,25 @@ type FieldProps = {
   right?: ReactNode;
   testId?: string;
   ariaLabel: string;
+  /** Click on the disabled field turns it on (production SL/TP behavior); the field is focused once enabled. */
+  onActivate?: () => void;
 };
 
 /**
  * Production-style numeric field: input · ⇆ · right slot. The ⇆ swap button is decorative in this
  * prototype (the redesign replaces these fields), so it does nothing.
  */
-export function NumberField({ value, onChange, step, decimals, disabled, invalid, error, right, testId, ariaLabel }: FieldProps) {
+export function NumberField({ value, onChange, step, decimals, disabled, invalid, error, right, testId, ariaLabel, onActivate }: FieldProps) {
   const [focused, setFocused] = useState(false);
   const [hover, setHover] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusOnEnable = useRef(false);
+  useEffect(() => {
+    if (!disabled && focusOnEnable.current) {
+      focusOnEnable.current = false;
+      inputRef.current?.focus();
+    }
+  }, [disabled]);
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
@@ -106,8 +116,18 @@ export function NumberField({ value, onChange, step, decimals, disabled, invalid
   return (
     <div className={styles.fieldWrap} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       {invalid && error && (focused || hover) && <div className={styles.fieldTooltip}>{error}</div>}
-      <div className={`${styles.field} ${focused ? styles.fieldFocus : ''} ${invalid ? styles.fieldInvalid : ''} ${disabled ? styles.fieldDisabled : ''}`}>
+      <div
+        className={`${styles.field} ${focused ? styles.fieldFocus : ''} ${invalid ? styles.fieldInvalid : ''} ${disabled ? styles.fieldDisabled : ''} ${disabled && onActivate ? styles.fieldActivatable : ''}`}
+        onMouseDown={(e) => {
+          // Disabled controls inside (input, right slot) don't get the click, so it lands here.
+          if (!disabled || !onActivate) return;
+          e.preventDefault();
+          focusOnEnable.current = true;
+          onActivate();
+        }}
+      >
         <input
+          ref={inputRef}
           className={`${styles.input} tabular`}
           value={value}
           disabled={disabled}

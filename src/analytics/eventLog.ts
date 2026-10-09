@@ -1,4 +1,4 @@
-import { PANEL_VARIANT } from '../config/flags';
+import { getVariant } from '../store/variantStore';
 
 export type TicketEventType =
   | 'ticket_open'
@@ -14,7 +14,8 @@ export type TicketEventType =
   | 'order_cancel'
   | 'order_modify'
   | 'position_close'
-  | 'symbol_change';
+  | 'symbol_change'
+  | 'panel_switch';
 
 export type LoggedEvent = {
   /** ms since epoch */
@@ -41,7 +42,7 @@ export function logEvent(type: TicketEventType, data?: Record<string, unknown>) 
   }
   if (type === 'submit' && openedAt !== null) data = { ...data, msFromOpen: Date.now() - openedAt };
   if (type === 'submit' || type === 'ticket_close') flushFields();
-  events.push({ t: Date.now(), type, panel: PANEL_VARIANT, session, data });
+  events.push({ t: Date.now(), type, panel: getVariant(), session, data });
   listeners.forEach((l) => l());
 }
 
@@ -80,5 +81,5 @@ export function onEventsChange(l: () => void): () => void {
 
 export function exportEventsJson(): string {
   flushFields();
-  return JSON.stringify({ exportedAt: new Date().toISOString(), panel: PANEL_VARIANT, userAgent: navigator.userAgent, events }, null, 2);
+  return JSON.stringify({ exportedAt: new Date().toISOString(), panel: getVariant(), userAgent: navigator.userAgent, events }, null, 2);
 }

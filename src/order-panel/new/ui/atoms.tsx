@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, ChevronUp, Clock3, LoaderCircle, Plus, X } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Side } from '../../../lib/orderMath';
 import { MenuItem, Popover } from '../../../ui/Popover';
 import type { CaptionTone, Tone } from '../presenters';
@@ -179,6 +179,8 @@ type ValueFieldProps = {
   testId?: string;
   /** Sandbox only. */
   forceFocus?: boolean;
+  /** Click on the disabled field turns it on (production SL/TP behavior); the field is focused once enabled. */
+  onActivate?: () => void;
 };
 
 /** Value on the left (with unit suffix), a second value on the right, no swap button. */
@@ -200,9 +202,17 @@ export function ValueField({
   ariaLabel,
   testId,
   forceFocus,
+  onActivate,
 }: ValueFieldProps) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusOnEnable = useRef(false);
+  useEffect(() => {
+    if (!disabled && focusOnEnable.current) {
+      focusOnEnable.current = false;
+      inputRef.current?.focus();
+    }
+  }, [disabled]);
   const shown = focused ? value : (display ?? value);
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -224,10 +234,18 @@ export function ValueField({
         state === 'error' && !disabled && s.fieldError,
         state === 'warning' && !disabled && s.fieldWarning,
         disabled && s.fieldDisabled,
+        disabled && onActivate && s.fieldActivatable,
         placeholderStyle === 'text' && s.placeholderText,
       )}
       onMouseDown={(e) => {
-        if (disabled || e.target === inputRef.current) return;
+        if (disabled) {
+          if (!onActivate) return;
+          e.preventDefault();
+          focusOnEnable.current = true;
+          onActivate();
+          return;
+        }
+        if (e.target === inputRef.current) return;
         e.preventDefault();
         inputRef.current?.focus();
       }}
@@ -416,12 +434,12 @@ export function ExitLevel<T extends string>({
       {aside ? (
         <div className={s.dateTime}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <ValueField {...field} disabled={!enabled} placeholderStyle="text" />
+            <ValueField {...field} disabled={!enabled} onActivate={() => onToggle(true)} placeholderStyle="text" />
           </div>
           {aside}
         </div>
       ) : (
-        <ValueField {...field} disabled={!enabled} placeholderStyle="text" />
+        <ValueField {...field} disabled={!enabled} onActivate={() => onToggle(true)} placeholderStyle="text" />
       )}
       {enabled && caption && (
         <FieldCaption tone={captionTone} testId={`${testId}-caption`}>

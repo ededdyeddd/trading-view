@@ -8,7 +8,7 @@ An interactive copy of the TradingView chart page in Paper Trading mode, built a
 npm install
 npm run dev        # http://localhost:5173, no keys needed (sim feed)
 npm test           # unit tests: orderMath, deriveTicket, paperEngine, presenters, scenarios
-npm run e2e        # Playwright: 3 study scenarios × current/new (first run: npx playwright install chromium)
+npm run e2e        # Playwright: 3 scenarios × current/new + panel switch (first run: npx playwright install chromium)
 npm run build      # typecheck + production build
 ```
 
@@ -17,7 +17,7 @@ npm run build      # typecheck + production build
 | Parameter | Values | Default | What it does |
 |---|---|---|---|
 | `?feed=` | `sim`, `binance`, `finnhub`, `live` | `sim` | Quote source (see below) |
-| `?panel=` | `current`, `new` | `current` | Order panel variant. `current` is a copy of production; `new` is the redesign (step 2) |
+| `?panel=` | `current`, `new` | `current` | Initial order panel. `current` is a copy of production; `new` is the redesign. At runtime it is switched by the floating **Order panel: Current / New** switch in the bottom-left corner (the choice is remembered) |
 | `?debug=1` | — | off | Hidden debug menu (bug button bottom-left): export the event log as JSON, fast-forward the clock to expire orders, drop live feeds, reset the account |
 | `?theme=dark` | — | light | Dark theme (tokens only, not polished) |
 | `?freeze=1` | — | off | Freezes sim prices (AAPL 201.56 / 201.57) for comparing against Figma |
@@ -25,7 +25,6 @@ npm run build      # typecheck + production build
 | `?market=closed` | — | open | Closed US stock session: banner, Market "· at open" |
 | `?expireFast=1` | — | off | Day = 1 min, Week = 3 min, Month = 10 min (expiry check) |
 | `?seed=N` | number | random | Repeatable simulated market |
-| `?study=1` | — | — | Usability study: participant, panel order, scenarios, Done, JSON/CSV export |
 | `?sandbox=1` | — | — | Gallery of the new panel's atoms in every state |
 | `?sandbox=panel&panel=new&freeze=1` | `&h=799` | — | The panel alone at Figma frame size, for 1:1 screenshots |
 
@@ -74,6 +73,9 @@ A panel is just a view. It receives `ticket = useOrderTicket()`:
 Both panels submit the same `OrderDraft` to `paperEngine` through `tradingStore.placeOrder`.
 
 ## Ways to open the order panel
+
+The order panel (Trade) is open when the app loads.
+
 
 - **Sell / Buy** buttons in the top-left corner of the chart (opens with the matching side)
 - **Shift+T**

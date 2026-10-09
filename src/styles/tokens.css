@@ -78,8 +78,10 @@
   --shadow-popup: 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.16);
 
   /* ---- Redesign (order panel `new`), from Figma variables of file e0zJvrcoBdJiypZDxVhY4O ---- */
-  --nt-font-weight-medium: 510;
-  --nt-font-weight-semibold: 590;
+  /* Figma uses SF Pro 510/590; Chrome's -apple-system renders those off-grid weights close to Bold,
+     so we use the standard 500/600 like the current panel (600 matches the Figma semibold). */
+  --nt-font-weight-medium: 500;
+  --nt-font-weight-semibold: 600;
   --nt-tracking-14: -0.154px;
   --nt-tracking-13: -0.078px;
   --nt-tracking-16: -0.32px;

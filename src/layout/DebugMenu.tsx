@@ -1,10 +1,10 @@
 import { Bug } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { clearEvents, exportEventsJson, getEvents, onEventsChange } from '../analytics/eventLog';
-import { DEBUG, FEED_MODE, PANEL_VARIANT } from '../config/flags';
+import { DEBUG, FEED_MODE } from '../config/flags';
 import { dropLiveFeeds } from '../market/marketStore';
-import { download as downloadFile, loadSession, sessionCsv, sessionJson } from '../study/studyStore';
 import { useTradingStore } from '../store/tradingStore';
+import { useVariantStore } from '../store/variantStore';
 import styles from './DebugMenu.module.css';
 
 /** Hidden test-moderator menu (?debug=1): event log export, time travel, account reset. */
@@ -14,6 +14,7 @@ export function DebugMenu() {
   const clockOffset = useTradingStore((s) => s.clockOffset);
   const advanceClock = useTradingStore((s) => s.advanceClock);
   const resetAccount = useTradingStore((s) => s.resetAccount);
+  const variant = useVariantStore((s) => s.variant);
 
   useEffect(() => onEventsChange(() => setCount(getEvents().length)), []);
 
@@ -24,7 +25,7 @@ export function DebugMenu() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ticket-events-${PANEL_VARIANT}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.download = `ticket-events-${variant}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -35,7 +36,7 @@ export function DebugMenu() {
         <div className={styles.menu} data-testid="debug-menu">
           <div className={styles.title}>Debug</div>
           <div className={styles.meta}>
-            panel: <b>{PANEL_VARIANT}</b> · feed: <b>{FEED_MODE}</b>
+            panel: <b>{variant}</b> · feed: <b>{FEED_MODE}</b>
           </div>
           <div className={styles.meta}>
             logged events: <b>{count}</b>
@@ -49,26 +50,6 @@ export function DebugMenu() {
           </button>
           <button type="button" onClick={clearEvents}>
             Clear events
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const s = loadSession();
-              if (s) downloadFile(`study-${s.pid}.json`, sessionJson(s), 'application/json');
-            }}
-            data-testid="export-study-json"
-          >
-            Export study JSON (participant)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const s = loadSession();
-              if (s) downloadFile(`study-${s.pid}.csv`, sessionCsv(s), 'text/csv');
-            }}
-            data-testid="export-study-csv"
-          >
-            Export study CSV (participant)
           </button>
           <hr />
           <button type="button" onClick={dropLiveFeeds} data-testid="drop-feeds">

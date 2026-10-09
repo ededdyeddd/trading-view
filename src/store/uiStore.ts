@@ -5,7 +5,7 @@ import type { Side } from '../lib/orderMath';
 
 export type ChartType = 'candles' | 'bars' | 'line';
 export type BottomTab = 'positions' | 'orders' | 'history' | 'summary' | 'log';
-export type TicketSource = 'chart-buy' | 'chart-sell' | 'hotkey' | 'header' | 'bottom-panel' | 'position';
+export type TicketSource = 'chart-buy' | 'chart-sell' | 'hotkey' | 'header' | 'bottom-panel' | 'position' | 'startup';
 
 type UiState = {
   symbol: string;

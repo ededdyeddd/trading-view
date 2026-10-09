@@ -210,6 +210,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
           placeholder={String(view.tpLevels[index]?.percent ?? 0)}
           suffix="%"
           disabled={!state.tp.enabled}
+          onActivate={() => t.setExitEnabled('tp', true, view)}
           ariaLabel={`Take profit ${index + 1}, % of position`}
           testId={`nt-tp${index + 1}-percent`}
           onEnter={doSubmit}

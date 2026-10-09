@@ -318,6 +318,16 @@
   color: var(--color-text-disabled);
 }
 
+/* Disabled inputs swallow mouse events; let the click reach the field so it can turn SL/TP on. */
+.fieldActivatable {
+  cursor: text;
+}
+
+.fieldActivatable .input,
+.fieldActivatable .slotDropdown {
+  pointer-events: none;
+}
+
 .swap {
   width: 28px;
   height: 28px;

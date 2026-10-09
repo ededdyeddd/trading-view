@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import { FEED_MODE, FINNHUB_KEY, FREEZE, type FeedMode } from '../config/flags';
+import { FEED_MODE, FINNHUB_KEY, FREEZE, SEED, type FeedMode } from '../config/flags';
 import { SYMBOLS, getSpec, type FeedKind } from '../config/symbols';
 import { BinanceProvider } from './binanceProvider';
 import { FinnhubProvider } from './finnhubProvider';
-import { SimProvider } from './simProvider';
+import { SimProvider, mulberry32 } from './simProvider';
 import type { Candle, MarketDataProvider, Quote, Timeframe } from './types';
 
 /** A live symbol with no quote for this long is considered dropped and falls back to sim. */
@@ -37,7 +37,8 @@ export const useMarketStore = create<MarketState>(() => ({
 // Routing + fallback
 // ---------------------------------------------------------------------------
 
-const sim = new SimProvider({ frozen: FREEZE });
+// A seed makes the simulated market repeatable (study scenarios); otherwise Math.random.
+const sim = new SimProvider({ frozen: FREEZE, random: SEED !== null ? mulberry32(SEED) : undefined });
 const binance = new BinanceProvider((symbol, reason) => fallBack(symbol, reason));
 const finnhub = FINNHUB_KEY ? new FinnhubProvider(FINNHUB_KEY, (symbol, reason) => fallBack(symbol, reason)) : null;
 

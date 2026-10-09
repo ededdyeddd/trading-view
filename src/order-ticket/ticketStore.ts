@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { logEvent, logFieldChange } from '../analytics/eventLog';
 import { PANEL_VARIANT, type PanelVariant } from '../config/flags';
@@ -7,6 +7,7 @@ import type { EngineEvent, TimeInForce } from '../engine/types';
 import { priceInput } from '../lib/format';
 import {
   defaultExitPrice,
+  defaultLevelPercents,
   describeExit,
   exitValueInUnit,
   marketRef,
@@ -20,8 +21,10 @@ import {
 import { useMarketStore } from '../market/marketStore';
 import { now, useAccountSummary, useTradingStore } from '../store/tradingStore';
 import { uiEvents, useUiStore } from '../store/uiStore';
-import { deriveTicket } from './deriveTicket';
-import type { ExitState, TicketState, TicketView } from './types';
+import { sessionOpensAt } from '../market/session';
+import type { Quote } from '../market/types';
+import { CURRENT_RULES, NEW_RULES, deriveTicket } from './deriveTicket';
+import type { ExitState, PriceUnit, TicketState, TicketView } from './types';
 
 function defaultQty(spec: SymbolSpec): string {
   if (spec.assetClass === 'crypto') return spec.symbol.startsWith('BTC') ? '0.01' : '0.1';
@@ -39,12 +42,16 @@ function initialState(symbol: string, variant: PanelVariant = PANEL_VARIANT): Ti
       side: 'buy',
       type: 'market',
       priceInput: '',
+      priceUnit: 'price',
       qtyUnit: 'units',
       qtyInput: '',
       sl: { enabled: false, unit: 'price', input: '', touched: true },
       tp: { enabled: false, unit: 'price', input: '', touched: true },
       tif: 'week',
       gtdDate: '',
+      gtdTime: '',
+      tpPercent: '',
+      tpLevels: [],
       fillOutsideRth: false,
     };
   }
@@ -53,12 +60,16 @@ function initialState(symbol: string, variant: PanelVariant = PANEL_VARIANT): Ti
     side: 'buy',
     type: 'limit',
     priceInput: '',
+    priceUnit: 'price',
     qtyUnit: 'units',
     qtyInput: defaultQty(getSpec(symbol)),
     tp: { enabled: false, unit: 'price', input: '', touched: false },
     sl: { enabled: false, unit: 'ticks', input: '25', touched: true },
     tif: 'week',
     gtdDate: '',
+    gtdTime: '',
+    tpPercent: '',
+    tpLevels: [],
     fillOutsideRth: false,
   };
 }
@@ -69,6 +80,17 @@ type Actions = {
   setSide: (side: Side) => void;
   setType: (type: OrderType) => void;
   setPriceInput: (text: string) => void;
+  /** Switch Limit/Stop price input between an absolute price and a tick offset; keeps the order price. */
+  setPriceUnit: (unit: PriceUnit, view: TicketView) => void;
+  /** Add TP 2 / TP 3 (max 3 levels): levels share the position equally. */
+  addTpLevel: (view: TicketView) => void;
+  removeTpLevel: (index: number) => void;
+  /** index 0 = TP 1. Input over what is left is capped. */
+  setTpPercent: (index: number, text: string) => void;
+  setTpLevelInput: (index: number, text: string) => void;
+  setGtdTime: (time: string) => void;
+  /** Replace the whole TIF selection (GTD with date and time). */
+  setGtd: (date: string, time: string) => void;
   /** Fills an empty price with the current market reference (Ask for buy, Bid for sell). */
   ensurePrice: () => void;
   setQtyInput: (text: string) => void;
@@ -112,6 +134,8 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
         qtyInput: '',
         sl: { ...s.sl, enabled: false, input: '' },
         tp: { ...s.tp, enabled: false, input: '' },
+        tpLevels: [],
+        tpPercent: '',
       }));
       return;
     }
@@ -132,8 +156,77 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   setType: (type) => {
     if (type === get().type) return;
     set({ type });
-    get().ensurePrice();
+    // The redesign keeps the price empty (placeholder = live Ask/Bid); production pre-fills it.
+    if (PANEL_VARIANT !== 'new') get().ensurePrice();
     logEvent('type_change', { type });
+  },
+  setPriceUnit: (unit, view) => {
+    const s = get();
+    if (unit === s.priceUnit) return;
+    const spec = getSpec(s.symbol);
+    let text = '';
+    if (view.price?.value != null) {
+      text = unit === 'price' ? priceInput(view.price.value, spec) : String(Math.abs(view.price.offsetTicks ?? 0));
+    }
+    set({ priceUnit: unit, priceInput: text });
+    logEvent('unit_change', { field: 'price', unit });
+  },
+  addTpLevel: (view) => {
+    const s = get();
+    if (s.tpLevels.length >= 2) return;
+    const n = s.tpLevels.length + 2;
+    const pct = defaultLevelPercents(n);
+    // A new level starts one more TP-distance further out than the last one.
+    const last = view.tpLevels[view.tpLevels.length - 1]?.level;
+    let input = '';
+    if (last && view.entry !== null && !last.invalid) {
+      const spec = getSpec(s.symbol);
+      const step = last.price - view.entry;
+      const next = describeExit(
+        'tp',
+        s.side,
+        view.entry,
+        1,
+        Math.round((last.price + step / Math.max(1, n - 1)) / spec.tickSize) * spec.tickSize,
+        accountBalance(),
+        spec,
+      );
+      input = exitInputText(next, s.tp.unit, spec);
+    }
+    set({
+      tpPercent: String(pct[0]),
+      tpLevels: [...s.tpLevels.map((l, i) => ({ ...l, percent: String(pct[i + 1]) })), { input, percent: String(pct[n - 1]) }],
+    });
+    logEvent('field_change', { field: 'tpLevels', value: n });
+  },
+  removeTpLevel: (index) => {
+    const s = get();
+    const levels = s.tpLevels.filter((_, i) => i !== index - 1);
+    const pct = defaultLevelPercents(levels.length + 1);
+    set({ tpLevels: levels.map((l, i) => ({ ...l, percent: String(pct[i + 1]) })), tpPercent: levels.length ? String(pct[0]) : '' });
+    logEvent('field_change', { field: 'tpLevels', value: levels.length + 1 });
+  },
+  setTpPercent: (index, text) => {
+    const s = get();
+    const all = [s.tpPercent, ...s.tpLevels.map((l) => l.percent)];
+    const others = all.reduce((a, p, i) => (i === index ? a : a + (Number(p) || 0)), 0);
+    let v = text.replace(/[^\d]/g, '');
+    if (v !== '' && Number(v) > 100 - others) v = String(Math.max(0, 100 - others));
+    if (index === 0) set({ tpPercent: v });
+    else set({ tpLevels: s.tpLevels.map((l, i) => (i === index - 1 ? { ...l, percent: v } : l)) });
+    logFieldChange(`tpPercent${index + 1}`, v);
+  },
+  setTpLevelInput: (index, text) => {
+    set((s) => ({ tpLevels: s.tpLevels.map((l, i) => (i === index - 1 ? { ...l, input: text } : l)) }));
+    logFieldChange(`tp${index + 1}`, text);
+  },
+  setGtdTime: (gtdTime) => {
+    set({ gtdTime });
+    logFieldChange('gtdTime', gtdTime);
+  },
+  setGtd: (gtdDate, gtdTime) => {
+    set({ tif: 'gtd', gtdDate, gtdTime });
+    logEvent('field_change', { field: 'tif', value: 'gtd', date: gtdDate, time: gtdTime });
   },
   setPriceInput: (text) => {
     set({ priceInput: text });
@@ -180,6 +273,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
       }
     }
     set({ [kind]: { ...s[kind], enabled, input, touched: true } } as Partial<TicketState>);
+    if (kind === 'tp' && !enabled) set({ tpLevels: [], tpPercent: '' });
     logEvent('toggle_change', { field: kind, enabled });
   },
   clearQty: () => set({ qtyInput: '' }),
@@ -195,6 +289,14 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     const spec = getSpec(s.symbol);
     const text = lvl && !lvl.invalid ? exitInputText(lvl, unit, spec) : '';
     set({ [kind]: { ...ex, unit, input: text, touched: true } } as Partial<TicketState>);
+    if (kind === 'tp' && s.tpLevels.length) {
+      set({
+        tpLevels: s.tpLevels.map((l, i) => {
+          const lv = view.tpLevels[i + 1]?.level;
+          return { ...l, input: lv && !lv.invalid ? exitInputText(lv, unit, spec) : '' };
+        }),
+      });
+    }
     logEvent('unit_change', { field: kind, unit });
   },
   setTif: (tif) => {
@@ -211,7 +313,8 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   },
   submit: (view, opts) => {
     if (!view.draft) return [];
-    logEvent('submit', { draft: view.draft });
+    const q = useMarketStore.getState().quotes[view.draft.symbol];
+    logEvent('submit', { draft: view.draft, market: q ? { bid: q.bid, ask: q.ask } : null });
     const events = useTradingStore.getState().placeOrder(view.draft, opts);
     const rejected = events.find((e) => e.type === 'rejected');
     logEvent('submit_result', { result: rejected ? 'rejected' : 'accepted', message: rejected?.message, orderId: events[0]?.order?.id });
@@ -241,14 +344,53 @@ useUiStore.subscribe((s, prev) => {
  */
 export function useOrderTicket() {
   const state = useTicketStore();
-  const quote = useMarketStore((s) => s.quotes[state.symbol]);
+  const liveQuote = useMarketStore((s) => s.quotes[state.symbol]);
   const account = useAccountSummary();
   const spec = getSpec(state.symbol);
+  const isNew = PANEL_VARIANT === 'new';
+  // Risk sizing at Market floats with the market: re-derive the quantity at most every 500 ms.
+  const throttle = isNew && state.type === 'market' && (state.qtyUnit === 'riskMoney' || state.qtyUnit === 'riskBalancePercent');
+  const quote = useThrottled(liveQuote, throttle ? 500 : 0);
+  const t = now();
+  const opensAt = sessionOpensAt(state.symbol, t);
   const view = useMemo(
-    () => deriveTicket(state, { quote, spec, balance: account.balance, availableFunds: account.availableFunds, now: now() }),
-    [state, quote, spec, account.balance, account.availableFunds],
+    () =>
+      deriveTicket(state, {
+        quote,
+        spec,
+        balance: account.balance,
+        availableFunds: account.availableFunds,
+        now: t,
+        rules: isNew ? NEW_RULES : CURRENT_RULES,
+        opensAt,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, quote, spec, account.balance, account.availableFunds, isNew, opensAt],
   );
-  return { state, view, spec, quote, account };
+  return { state, view, spec, quote: liveQuote, account };
+}
+
+/** Passes `value` through at most once per `ms` (0 = no throttling); the latest value always lands. */
+function useThrottled(value: Quote | undefined, ms: number): Quote | undefined {
+  const [held, setHeld] = useState(value);
+  const last = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (ms === 0) return;
+    const wait = last.current + ms - Date.now();
+    if (wait <= 0) {
+      last.current = Date.now();
+      setHeld(value);
+    } else if (!timer.current) {
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        last.current = Date.now();
+        setHeld(useMarketStore.getState().quotes[value?.symbol ?? ''] ?? value);
+      }, wait);
+    }
+  }, [value, ms]);
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+  return ms === 0 ? value : held;
 }
 
 export type OrderTicket = ReturnType<typeof useOrderTicket>;

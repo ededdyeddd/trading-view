@@ -8,28 +8,46 @@ import type { OrderDraft } from '../engine/types';
 import { parseNum, priceInput as fmtPriceInput } from '../lib/format';
 import {
   checkPrice,
+  defaultLevelPercents,
   describeExit,
   exceedsMargin,
   exitDirection,
   marginFor,
   marketRef,
+  maxQtyForMargin,
+  offsetDirection,
   offsetTicks,
+  priceFromOffset,
   qtyEquivalents,
   resolveExit,
   resolveQty,
+  riskPerUnit,
   riskReward,
   roundToTick,
+  splitQty,
   tickValue,
   tradeValue,
+  weightedAverage,
   type ExitKind,
   type ExitLevel,
   type ExitUnit,
 } from '../lib/orderMath';
 import type { Quote } from '../market/types';
-import type { DisabledReason, ExitState, ExitView, TicketState, TicketView } from './types';
+import type { DisabledReason, ExitState, ExitView, TicketState, TicketView, TpLevelView } from './types';
 
 /** Production defaults: TP 75 ticks, SL 25 ticks from entry. */
 export const DEFAULT_EXIT_TICKS: Record<ExitKind, number> = { tp: 75, sl: 25 };
+
+/** Rules that differ between the production control and the redesign. */
+export type TicketRules = {
+  /** Block submit when margin is insufficient (production submits and the engine rejects). */
+  blockOnMargin: boolean;
+  /** A stop already beyond the market is a warning ("Triggers now"), not a block (production blocks). */
+  allowTriggeredStop: boolean;
+};
+
+export const CURRENT_RULES: TicketRules = { blockOnMargin: false, allowTriggeredStop: false };
+export const NEW_RULES: TicketRules = { blockOnMargin: true, allowTriggeredStop: true };
 
 export type TicketContext = {
   quote: Quote | undefined;
@@ -38,12 +56,16 @@ export type TicketContext = {
   balance: number;
   availableFunds: number;
   now: number;
+  rules?: TicketRules;
+  /** When the session is closed: the next open (ms). Market orders are queued until then. */
+  opensAt?: number | null;
 };
 
 const MONEY_UNITS: ExitUnit[] = ['money', 'balancePercent'];
 
 export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView {
   const { quote, spec, balance, now } = ctx;
+  const rules = ctx.rules ?? CURRENT_RULES;
   const bid = quote?.bid ?? 0;
   const ask = quote?.ask ?? 0;
   const ready = !!quote;
@@ -55,10 +77,18 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     entry = ready ? marketRef(state.side, bid, ask) : null;
   } else {
     const raw = parseNum(state.priceInput);
-    const value = raw > 0 ? roundToTick(raw, spec.tickSize) : null;
+    const unit = state.priceUnit ?? 'price';
+    let value: number | null = null;
+    if (unit === 'ticks') value = raw > 0 && ready ? priceFromOffset(state.type, state.side, bid, ask, raw, spec.tickSize) : null;
+    else value = raw > 0 ? roundToTick(raw, spec.tickSize) : null;
     const check = value !== null && ready ? checkPrice(state.type, state.side, value, bid, ask) : { fillsNow: false, invalid: false };
+    const ref = ready ? marketRef(state.side, bid, ask) : 0;
     price = {
+      unit,
       value,
+      placeholder: ref,
+      offset: value !== null && ready ? roundToTick(value - ref, spec.tickSize) : null,
+      direction: offsetDirection(state.type, state.side) < 0 ? 'below' : 'above',
       offsetTicks: value !== null && ready ? offsetTicks(value, state.side, bid, ask, spec.tickSize) : null,
       ref: state.side === 'buy' ? 'Ask' : 'Bid',
       fillsNow: check.fillsNow,
@@ -92,6 +122,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   const slDistance = sl.level && !sl.level.invalid ? sl.level.distance : null;
 
   const eq = qtyEquivalents(units, qtyPrice, balance, slDistance, spec);
+  const perUnit = slDistance !== null && entry !== null && sl.level ? riskPerUnit(entry, sl.level.price, spec) : null;
   const qty = {
     units,
     needsStopLoss: qtyRes.needsStopLoss || (riskSized && (!state.sl.enabled || slCircular)),
@@ -100,27 +131,75 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     margin: marginFor(units, qtyPrice, spec),
     tickValue: tickValue(units, spec, qtyPrice),
     realRisk: eq.riskMoney,
+    riskPerUnit: perUnit,
+    riskBelowOne: riskSized && qtyValue > 0 && units === 0 && slDistanceForQty !== null,
+    maxUnits: qtyPrice > 0 ? maxQtyForMargin(ctx.availableFunds, qtyPrice, spec) : 0,
   };
 
-  const rr =
-    sl.enabled && tp.enabled && sl.level && tp.level && !sl.level.invalid && !tp.level.invalid ? riskReward(sl.level.distance, tp.level.distance) : null;
+  // 3b. Take-profit levels (TP 1 + up to two extra) ------------------------------
+  const levelCount = 1 + state.tpLevels.length;
+  const defaults = defaultLevelPercents(levelCount);
+  const percents = [state.tpPercent, ...state.tpLevels.map((l) => l.percent)].map((p, i) => {
+    if (levelCount === 1) return 100;
+    const n = parseNum(p);
+    return Number.isFinite(n) ? n : defaults[i];
+  });
+  const levelQty = splitQty(units, percents, spec.qtyStep);
+  const tpLevels: TpLevelView[] = [{ input: tp.input, level: tp.level, percent: percents[0], qty: levelQty[0], money: null, error: tp.error }];
+  state.tpLevels.forEach((l, i) => {
+    const v = exitView(
+      'tp',
+      { enabled: state.tp.enabled, unit: state.tp.unit, input: l.input, touched: true },
+      state,
+      entry,
+      levelQty[i + 1] || units,
+      balance,
+      spec,
+      false,
+    );
+    tpLevels.push({ input: l.input, level: v.level, percent: percents[i + 1], qty: levelQty[i + 1], money: null, error: v.error });
+  });
+  // Money of each level uses its own quantity.
+  const tpMoneyParts = tpLevels.map((l) =>
+    l.level && !l.level.invalid && entry !== null
+      ? describeExit('tp', state.side, entry, levelCount === 1 ? units : l.qty, l.level.price, balance, spec).money
+      : null,
+  );
+  tpMoneyParts.forEach((m, i) => (tpLevels[i].money = m));
+  const tpValid = tp.enabled && tpMoneyParts.every((m) => m !== null);
+  const tpMoney = tpValid ? Math.round(tpMoneyParts.reduce<number>((a, m) => a + (m ?? 0), 0) * 100) / 100 : null;
+  const tpPercentLeft = Math.max(0, 100 - percents.reduce((a, b) => a + b, 0));
+  const avgTpDistance =
+    tpValid && entry !== null
+      ? weightedAverage(
+          tpLevels.map((l) => l.level!.distance),
+          levelCount === 1 ? [1] : tpLevels.map((l) => l.percent),
+        )
+      : null;
 
-  // 4. Expiry -------------------------------------------------------------------
-  const gtd = state.gtdDate ? new Date(`${state.gtdDate}T00:00:00`).getTime() : undefined;
-  const expiresAt = state.type === 'market' ? null : computeExpiry(state.tif, now, gtd);
+  const rr = sl.enabled && tp.enabled && sl.level && !sl.level.invalid && avgTpDistance !== null ? riskReward(sl.level.distance, avgTpDistance) : null;
+
+  // 4. Expiry and session -------------------------------------------------------
+  const gtdMs = state.gtdDate ? new Date(`${state.gtdDate}T${state.gtdTime || '00:00'}:00`).getTime() : undefined;
+  const expiresAt = state.type === 'market' ? null : computeExpiry(state.tif, now, gtdMs);
+  const opensAt = ctx.opensAt ?? null;
 
   // 5. Submit gate --------------------------------------------------------------
   let reason: DisabledReason | null = null;
   const needPrice = state.type !== 'market' && price?.value === null;
+  const levelsInvalid = tp.enabled && tpLevels.slice(1).some((l) => !l.level || l.level.invalid || !(l.qty > 0));
   if (!ready) reason = 'no-quote';
   else if (qty.needsStopLoss) reason = 'set-stop-loss';
-  else if (needPrice && !(units > 0)) reason = 'enter-price-and-quantity';
+  else if (needPrice && !(units > 0) && !qty.riskBelowOne) reason = 'enter-price-and-quantity';
   else if (needPrice) reason = 'enter-price';
+  else if (qty.riskBelowOne) reason = 'risk-below-one';
   else if (!(units > 0)) reason = 'enter-quantity';
   else if (units < spec.minQty) reason = 'below-min-qty';
-  else if (price?.invalid) reason = 'invalid-price';
-  else if ((sl.enabled && (sl.error || !sl.level)) || (tp.enabled && (tp.error || !tp.level))) reason = 'invalid-exit';
+  else if (price?.invalid && !rules.allowTriggeredStop) reason = 'invalid-price';
+  else if ((sl.enabled && (sl.error || !sl.level)) || (tp.enabled && (tp.error || !tp.level)) || levelsInvalid) reason = 'invalid-exit';
+  else if (rules.blockOnMargin && exceedsMargin(qty.margin, ctx.availableFunds)) reason = 'not-enough-margin';
 
+  const tpLegs = tp.enabled && levelCount > 1 ? tpLevels.filter((l) => l.qty > 0 && l.level).map((l) => ({ price: l.level!.price, qty: l.qty })) : undefined;
   const draft: OrderDraft | null =
     reason === null && entry !== null
       ? {
@@ -131,9 +210,11 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
           limitPrice: state.type === 'limit' ? entry : undefined,
           stopPrice: state.type === 'stop' ? entry : undefined,
           stopLoss: sl.enabled && sl.level ? sl.level.price : undefined,
-          takeProfit: tp.enabled && tp.level ? tp.level.price : undefined,
+          takeProfit: tp.enabled && tp.level && !tpLegs ? tp.level.price : undefined,
+          takeProfits: tpLegs,
           tif: state.tif,
           expiresAt: state.tif === 'gtd' ? (expiresAt ?? undefined) : undefined,
+          activateAt: state.type === 'market' && opensAt !== null ? opensAt : undefined,
         }
       : null;
 
@@ -147,6 +228,9 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     qty,
     sl,
     tp,
+    tpLevels,
+    tpMoney,
+    tpPercentLeft,
     riskReward: rr,
     expiresAt,
     availableFunds: ctx.availableFunds,
@@ -155,6 +239,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     disabledReason: reason,
     disabledText: reason ? disabledText(reason, state, sl, tp) : null,
     draft,
+    opensAt,
   };
 }
 
@@ -212,5 +297,9 @@ function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, 
       return "Selected price isn't valid for this order type";
     case 'invalid-exit':
       return sl.error ?? tp.error ?? 'Check exits';
+    case 'risk-below-one':
+      return 'Risk is below 1 share';
+    case 'not-enough-margin':
+      return 'Not enough margin';
   }
 }

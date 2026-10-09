@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { getSpec } from '../config/symbols';
 import {
   checkPrice,
+  defaultLevelPercents,
   describeExit,
+  maxQtyForMargin,
+  priceFromOffset,
+  riskPerUnit,
+  splitQty,
+  weightedAverage,
   floorToStep,
   marginFor,
   offsetTicks,
@@ -172,5 +178,41 @@ describe('price checks (Figma "Limit Price")', () => {
     expect(checkPrice('stop', 'buy', 202, bid, ask).invalid).toBe(false);
     expect(checkPrice('stop', 'sell', 202, bid, ask).invalid).toBe(true);
     expect(checkPrice('stop', 'sell', 200, bid, ask).invalid).toBe(false);
+  });
+});
+
+describe('step 2b formulas', () => {
+  it('Limit: 257 ticks below Ask → 199.00; Stop above Ask', () => {
+    expect(priceFromOffset('limit', 'buy', 201.56, 201.57, 257, 0.01)).toBe(199);
+    expect(priceFromOffset('stop', 'buy', 201.56, 201.57, 343, 0.01)).toBe(205);
+    expect(priceFromOffset('limit', 'sell', 201.56, 201.57, 100, 0.01)).toBe(202.56);
+  });
+  it('Risk USD 400, SL 197.50 at Market → 98 shares, real risk 398.86, margin 395.08', () => {
+    const { qty } = resolveQty({ unit: 'riskMoney', value: 400, price: ENTRY, balance: BALANCE, slDistance: SL_DIST, spec: AAPL });
+    expect(qty).toBe(98);
+    expect(qtyEquivalents(qty, ENTRY, BALANCE, SL_DIST, AAPL).riskMoney).toBe(398.86);
+    expect(marginFor(qty, ENTRY, AAPL)).toBeCloseTo(395.08, 2);
+  });
+  it('Limit example: entry 199.00, Risk USD 400, SL 195.00 → 100 shares, real risk 400.00, margin 398.00', () => {
+    const { qty } = resolveQty({ unit: 'riskMoney', value: 400, price: 199, balance: BALANCE, slDistance: 4, spec: AAPL });
+    expect(qty).toBe(100);
+    expect(qtyEquivalents(qty, 199, BALANCE, 4, AAPL).riskMoney).toBe(400);
+    expect(marginFor(qty, 199, AAPL)).toBeCloseTo(398, 6);
+  });
+  it('risk below 1 share: 4.07 USD per share', () => {
+    expect(riskPerUnit(201.57, 197.5, AAPL)).toBeCloseTo(4.07, 6);
+    expect(resolveQty({ unit: 'riskMoney', value: 3, price: ENTRY, balance: BALANCE, slDistance: SL_DIST, spec: AAPL }).qty).toBe(0);
+  });
+  it('max shares by margin: floor(99,953.90 / (201.57 × 2%)) = floor(24,793.84) = 24,793 (prompt rounds to 24,794)', () => {
+    expect(maxQtyForMargin(BALANCE, ENTRY, AAPL)).toBe(24_793);
+  });
+  it('TP levels split the position and average by weight', () => {
+    expect(defaultLevelPercents(1)).toEqual([100]);
+    expect(defaultLevelPercents(2)).toEqual([50, 50]);
+    expect(defaultLevelPercents(3)).toEqual([33, 33, 34]);
+    expect(splitQty(100, [33, 33, 34], 1)).toEqual([33, 33, 34]);
+    expect(splitQty(10, [50, 38], 1)).toEqual([5, 3]);
+    expect(weightedAverage([205, 207, 209], [33, 33, 34])).toBeCloseTo((205 * 33 + 207 * 33 + 209 * 34) / 100, 9);
+    expect(weightedAverage([1], [0])).toBeNull();
   });
 });

@@ -26,7 +26,7 @@ function gauss(rand: () => number): number {
 }
 
 /** Small deterministic PRNG so generated history is stable per symbol within a session. */
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;

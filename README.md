@@ -7,7 +7,8 @@ An interactive copy of the TradingView chart page in Paper Trading mode, built a
 ```bash
 npm install
 npm run dev        # http://localhost:5173, no keys needed (sim feed)
-npm test           # unit tests: orderMath, deriveTicket, paperEngine
+npm test           # unit tests: orderMath, deriveTicket, paperEngine, presenters, scenarios
+npm run e2e        # Playwright: 3 study scenarios × current/new (first run: npx playwright install chromium)
 npm run build      # typecheck + production build
 ```
 
@@ -20,6 +21,11 @@ npm run build      # typecheck + production build
 | `?debug=1` | — | off | Hidden debug menu (bug button bottom-left): export the event log as JSON, fast-forward the clock to expire orders, drop live feeds, reset the account |
 | `?theme=dark` | — | light | Dark theme (tokens only, not polished) |
 | `?freeze=1` | — | off | Freezes sim prices (AAPL 201.56 / 201.57) for comparing against Figma |
+| `?chartLines=1` | — | off | Ticket levels on the chart (entry, SL, TP) with dragging — for both panels |
+| `?market=closed` | — | open | Closed US stock session: banner, Market "· at open" |
+| `?expireFast=1` | — | off | Day = 1 min, Week = 3 min, Month = 10 min (expiry check) |
+| `?seed=N` | number | random | Repeatable simulated market |
+| `?study=1` | — | — | Usability study: participant, panel order, scenarios, Done, JSON/CSV export |
 | `?sandbox=1` | — | — | Gallery of the new panel's atoms in every state |
 | `?sandbox=panel&panel=new&freeze=1` | `&h=799` | — | The panel alone at Figma frame size, for 1:1 screenshots |
 

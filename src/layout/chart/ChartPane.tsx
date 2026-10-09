@@ -1,4 +1,5 @@
 import { CalendarRange } from 'lucide-react';
+import { CHART_LINES } from '../../config/flags';
 import { useEffect, useState } from 'react';
 import { getSpec } from '../../config/symbols';
 import { fmtNumber, fmtPrice } from '../../lib/format';
@@ -8,6 +9,7 @@ import { useUiStore } from '../../store/uiStore';
 import { SymbolLogo } from '../../ui/SymbolLogo';
 import { CandleChart, type ChartHandle } from './CandleChart';
 import styles from './ChartPane.module.css';
+import { OrderLines } from './OrderLines';
 import { QuickTrade } from './QuickTrade';
 
 const TF_LABEL: Record<string, string> = { '1m': '1', '5m': '5', '15m': '15', '1h': '1h', '4h': '4h', '1D': '1D' };
@@ -20,7 +22,9 @@ export function ChartPane() {
   const symbol = useUiStore((s) => s.symbol);
   const timeframe = useUiStore((s) => s.timeframe);
   const chartType = useUiStore((s) => s.chartType);
+  const ticketOpen = useUiStore((s) => s.ticketOpen);
   const [bar, setBar] = useState<{ bar: Candle | null; prev: Candle | null }>({ bar: null, prev: null });
+  const [handle, setHandle] = useState<ChartHandle | null>(null);
 
   return (
     <div className={styles.pane}>
@@ -30,8 +34,14 @@ export function ChartPane() {
           timeframe={timeframe}
           chartType={chartType}
           onBar={(b, prev) => setBar({ bar: b, prev })}
-          onReady={(h) => (chartHandleRef.current = h)}
+          onReady={(h) => {
+            chartHandleRef.current = h;
+            setHandle(h);
+            // Dev-only hook for e2e / manual checks of chart-line dragging.
+            if (import.meta.env.DEV) (window as unknown as { __chartHandle?: ChartHandle | null }).__chartHandle = h;
+          }}
         />
+        {CHART_LINES && ticketOpen && <OrderLines handle={handle} />}
         <div className={styles.overlay}>
           <Legend symbol={symbol} tf={TF_LABEL[timeframe]} bar={bar.bar} prev={bar.prev} />
           <QuickTrade symbol={symbol} />

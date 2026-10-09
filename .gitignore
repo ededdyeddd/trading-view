@@ -26,3 +26,8 @@ dist-ssr
 # local env
 .env
 .env.local
+
+# e2e artifacts
+e2e-results/
+test-results/
+playwright-report/

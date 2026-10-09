@@ -18,6 +18,10 @@ export type OrderDraft = {
   /** Bracket levels created after the entry fills. */
   takeProfit?: number;
   stopLoss?: number;
+  /** Several take-profit levels (each with its own quantity). Overrides `takeProfit` when present. */
+  takeProfits?: { price: number; qty: number }[];
+  /** Market order queued until the session opens (ms). */
+  activateAt?: number;
   tif: TimeInForce;
   /** GTD expiry (ms). For other TIFs the engine computes it. */
   expiresAt?: number;
@@ -36,6 +40,9 @@ export type Order = {
   stopPrice?: number;
   takeProfit?: number;
   stopLoss?: number;
+  takeProfits?: { price: number; qty: number }[];
+  /** Queued market order: executes at the first quote after this time. */
+  activateAt?: number;
   tif: TimeInForce;
   /** null = good till cancelled (bracket legs). */
   expiresAt: number | null;

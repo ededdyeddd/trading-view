@@ -26,8 +26,19 @@ function endOfDay(ts: number): number {
   return d.getTime();
 }
 
-/** Day → end of today; Week → +7 days; Month → +1 calendar month; GTD → end of the chosen day. */
+/**
+ * Test-only shortening of order lifetimes (?expireFast=1): Day = 1 min, Week = 3 min, Month = 10 min.
+ * Set once at startup; null keeps calendar semantics.
+ */
+export const expiryOverride: { ms: Partial<Record<TimeInForce, number>> | null } = { ms: null };
+
+/**
+ * Day → end of today; Week → +7 days; Month → +1 calendar month (all to 23:59:59 local).
+ * GTD → the chosen moment; a date at local midnight means the end of that day.
+ */
 export function computeExpiry(tif: TimeInForce, now: number, gtd?: number): number {
+  const fast = expiryOverride.ms?.[tif];
+  if (fast !== undefined) return now + fast;
   switch (tif) {
     case 'day':
       return endOfDay(now);
@@ -38,8 +49,11 @@ export function computeExpiry(tif: TimeInForce, now: number, gtd?: number): numb
       d.setMonth(d.getMonth() + 1);
       return endOfDay(d.getTime());
     }
-    case 'gtd':
-      return endOfDay(gtd ?? now);
+    case 'gtd': {
+      const t = gtd ?? now;
+      const d = new Date(t);
+      return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 ? endOfDay(t) : t;
+    }
   }
 }
 
@@ -193,28 +207,29 @@ function applyFill(state: EngineState, order: Order, price: number, now: number)
     ev('filled', now, order.symbol, `Order executed: ${sideLabel(order.side)} ${fmtQty(order.qty, spec)} ${order.symbol} at ${fmtPrice(price, spec)}`, filled),
   );
 
-  // One-cancels-other for bracket legs.
-  if (order.ocoId) {
-    const sibling = s.orders.find((o) => o.id === order.ocoId);
-    if (sibling && sibling.status === 'working') {
-      const cancelled: Order = { ...sibling, status: 'cancelled', updatedAt: now };
-      s = replaceOrder(s, cancelled);
-      events.push(ev('cancelled', now, sibling.symbol, `Order cancelled: ${describe(sibling)}`, cancelled));
+  // Bracket legs of the same entry: SL cancels every TP; a TP shrinks the SL by its quantity.
+  if (order.parentId && (order.role === 'sl' || order.role === 'tp')) {
+    for (const leg of s.orders.filter((o) => o.parentId === order.parentId && o.status === 'working' && o.id !== order.id)) {
+      if (order.role === 'sl' || (leg.role === 'sl' && leg.qty - order.qty <= 1e-9)) {
+        const cancelled: Order = { ...leg, status: 'cancelled', updatedAt: now };
+        s = replaceOrder(s, cancelled);
+        events.push(ev('cancelled', now, leg.symbol, `Order cancelled: ${describe(leg)}`, cancelled));
+      } else if (leg.role === 'sl') {
+        const reduced: Order = { ...leg, qty: Number((leg.qty - order.qty).toFixed(10)), updatedAt: now };
+        s = replaceOrder(s, reduced);
+        events.push(ev('modified', now, leg.symbol, `Order modified: ${describe(reduced)}`, reduced));
+      }
     }
   }
 
   // Entry with exits → create the bracket legs.
-  if (order.role === 'entry' && (order.takeProfit !== undefined || order.stopLoss !== undefined)) {
+  const tps = order.takeProfits?.length ? order.takeProfits : order.takeProfit !== undefined ? [{ price: order.takeProfit, qty: order.qty }] : [];
+  if (order.role === 'entry' && (tps.length > 0 || order.stopLoss !== undefined)) {
     const legs: Order[] = [];
     const exitSide = oppositeSide(order.side);
-    let tpId: string | undefined;
-    let slId: string | undefined;
-    if (order.takeProfit !== undefined) [tpId, s] = nextId(s);
-    if (order.stopLoss !== undefined) [slId, s] = nextId(s);
     const base = {
       symbol: order.symbol,
       side: exitSide,
-      qty: order.qty,
       tif: order.tif,
       expiresAt: null,
       status: 'working' as const,
@@ -222,8 +237,24 @@ function applyFill(state: EngineState, order: Order, price: number, now: number)
       createdAt: now,
       updatedAt: now,
     };
-    if (tpId) legs.push({ ...base, id: tpId, type: 'limit', limitPrice: order.takeProfit, role: 'tp', ocoId: slId });
-    if (slId) legs.push({ ...base, id: slId, type: 'stop', stopPrice: order.stopLoss, role: 'sl', ocoId: tpId });
+    const tpIds: string[] = [];
+    for (const tp of tps) {
+      if (!(tp.qty > 0)) continue;
+      let id: string;
+      [id, s] = nextId(s);
+      tpIds.push(id);
+      legs.push({ ...base, id, qty: tp.qty, type: 'limit', limitPrice: tp.price, role: 'tp' });
+    }
+    let slId: string | undefined;
+    if (order.stopLoss !== undefined) {
+      [slId, s] = nextId(s);
+      legs.push({ ...base, id: slId, qty: order.qty, type: 'stop', stopPrice: order.stopLoss, role: 'sl' });
+    }
+    // Single TP + SL keep the classic OCO pair link.
+    if (tpIds.length === 1 && slId) {
+      legs[0].ocoId = slId;
+      legs[1].ocoId = tpIds[0];
+    }
     s = { ...s, orders: [...s.orders, ...legs] };
     legs.forEach((l) => events.push(ev('placed', now, l.symbol, `Order placed: ${describe(l)}`, l)));
   }
@@ -261,8 +292,6 @@ function validate(state: EngineState, draft: OrderDraft, quotes: Quotes, now: nu
   if (Math.abs(floorToStep(draft.qty, spec.qtyStep) - draft.qty) > 1e-9) return `Quantity must be a multiple of ${spec.qtyStep}`;
   if (draft.type === 'limit' && !(draft.limitPrice && draft.limitPrice > 0)) return 'Limit price is required';
   if (draft.type === 'stop' && !(draft.stopPrice && draft.stopPrice > 0)) return 'Stop price is required';
-  if (draft.type === 'stop' && checkPrice('stop', draft.side, draft.stopPrice!, q.bid, q.ask).invalid)
-    return draft.side === 'buy' ? 'Buy stop price must be above Ask' : 'Sell stop price must be below Bid';
   if (draft.tif === 'gtd' && !(draft.expiresAt && draft.expiresAt > now)) return 'Expiration date must be in the future';
 
   const entry = draft.type === 'limit' ? draft.limitPrice! : draft.type === 'stop' ? draft.stopPrice! : draft.side === 'buy' ? q.ask : q.bid;
@@ -270,6 +299,8 @@ function validate(state: EngineState, draft: OrderDraft, quotes: Quotes, now: nu
   if (draft.stopLoss !== undefined && !((entry - draft.stopLoss) * dir > 0)) return `Stop loss must be ${draft.side === 'buy' ? 'below' : 'above'} entry price`;
   if (draft.takeProfit !== undefined && !((draft.takeProfit - entry) * dir > 0))
     return `Take profit must be ${draft.side === 'buy' ? 'above' : 'below'} entry price`;
+  if (draft.takeProfits?.some((t) => !((t.price - entry) * dir > 0))) return `Take profit must be ${draft.side === 'buy' ? 'above' : 'below'} entry price`;
+  if (draft.takeProfits && draft.takeProfits.reduce((a, t) => a + t.qty, 0) > draft.qty + 1e-9) return 'Take profit levels exceed the position size';
 
   const required = incrementalMargin(state, draft.symbol, draft.side, draft.qty, entry);
   const available = accountSummary(state, quotes).availableFunds;
@@ -297,6 +328,8 @@ export function placeOrder(state: EngineState, draft: OrderDraft, quotes: Quotes
     stopPrice: draft.type === 'stop' ? draft.stopPrice : undefined,
     takeProfit: draft.takeProfit,
     stopLoss: draft.stopLoss,
+    takeProfits: draft.takeProfits,
+    activateAt: draft.type === 'market' ? draft.activateAt : undefined,
     tif: draft.tif,
     expiresAt: draft.type === 'market' ? null : computeExpiry(draft.tif, now, draft.expiresAt),
     status: 'working',
@@ -307,8 +340,13 @@ export function placeOrder(state: EngineState, draft: OrderDraft, quotes: Quotes
   let s: EngineState = { ...s0, orders: [...s0.orders, order] };
   const events: EngineEvent[] = [ev('placed', now, order.symbol, `Order placed: ${describe(order)}`, order)];
 
-  // Market and marketable limits execute immediately at the touch (Buy at Ask, Sell at Bid).
-  const marketable = draft.type === 'market' || (draft.type === 'limit' && checkPrice('limit', draft.side, draft.limitPrice!, q.bid, q.ask).fillsNow);
+  // Market, marketable limits and already-triggered stops execute immediately at the touch (Buy at Ask, Sell at Bid).
+  // A market order queued for the session open waits for onQuote.
+  const queued = order.activateAt !== undefined && order.activateAt > now;
+  const marketable =
+    (draft.type === 'market' && !queued) ||
+    (draft.type === 'limit' && checkPrice('limit', draft.side, draft.limitPrice!, q.bid, q.ask).fillsNow) ||
+    (draft.type === 'stop' && checkPrice('stop', draft.side, draft.stopPrice!, q.bid, q.ask).invalid);
   if (marketable) {
     const r = applyFill(s, order, draft.side === 'buy' ? q.ask : q.bid, now);
     s = r.state;
@@ -326,7 +364,9 @@ export function onQuote(state: EngineState, quote: Quote, now: number): EngineRe
     const o = s.orders.find((x) => x.id === c.id);
     if (!o || o.status !== 'working') continue; // cancelled by an earlier OCO fill in this pass
     let price: number | null = null;
-    if (o.type === 'limit') {
+    if (o.type === 'market') {
+      if (o.activateAt === undefined || now >= o.activateAt) price = o.side === 'buy' ? quote.ask : quote.bid;
+    } else if (o.type === 'limit') {
       if (o.side === 'buy' && quote.ask <= o.limitPrice!) price = o.limitPrice!;
       if (o.side === 'sell' && quote.bid >= o.limitPrice!) price = o.limitPrice!;
     } else if (o.type === 'stop') {

@@ -106,3 +106,47 @@ Element y-coordinates match the Figma frames exactly:
 Fixed during the check: switch row height (+2 px), "Add level" row height (+3 px), gap between summary and button (8 → 10).
 
 Remaining visual differences (not geometry): the logo (agreed), the system font instead of SF Pro in Figma (identical on macOS), lucide icons instead of TradingView icons.
+
+---
+
+# Step 2b — Limit, Stop, risk-first, study readiness
+
+Source: `docs/PRD.md` (exported from the PRD doc, Appendix C is the 2b prompt) + Figma `4086:72785` / `4086:72830`. The PRD version of the prompt adds block 7 "Submitting Limit and Stop" (toast with Cancel), so the blocks are renumbered: 8 — chart lines, 9 — study.
+
+## New Figma frames (checked with get_metadata)
+
+- `4108:37852` "Volume selection dropdown": 4 items (Shares, USD ⓘ, % balance ⓘ, Risk USD ⓘ), no live values. **Decision: 5 items with live values** (as in 2a and PRD FR-5.1, "Menu… with live values" — "later").
+- `4105:78057` — Exits on a grey container. **Decision: keep the approved Market/Limit Filled.**
+- `4105:77647` — a copy of Market · Filled, no changes.
+
+## Decisions and discrepancies
+
+- **Button reason texts** follow the prompt / PRD FR-8.5 ("Stop loss must be below entry", "Not enough margin"…), not the Figma note format ("Set stop loss below 201.57", "Reduce to 495 shares").
+- **Ticks from Ask/Bid**: the input is always positive, the direction is fixed by type and side ("257 ticks below" for Buy Limit, "… above" for Buy Stop / Sell Limit). In tick mode the price follows the market (an offset is an offset); a price that "fills now" can only be entered as a price.
+- **Max shares by margin**: `floor(99,953.90 / (201.57 × 2%)) = floor(24,793.84) = 24,793`. The prompt says 24,794 (rounded rather than floored); we follow the PRD formula with `floor`.
+- **"Margin 398.00 · Tick 1.00 USD"** in Figma Limit · Filled is missing "USD" after the margin — treated as a typo, we show "Margin 398.00 USD".
+- **The "% balance" suffix** for quantity stays "%" (the 2a table: "20 %"); "Risk % balance" shows "% of balance" (the 2b table: "0.5 % of balance").
+- **Not enough margin** now reads as in PRD FR-5.5 in every quantity mode: "Not enough margin for {shares} shares · max {maxShares}" (2a showed "Available …").
+- **Risk is below 1 share**: button "Risk is below 1 share" (FR-8.5 has no text for this; we took the caption's wording).
+- **A Stop beyond the market** (Buy Stop ≤ Ask, Sell Stop ≥ Bid): in `new` this is an orange "Triggers now…" warning and the order goes through and executes at the touch. **Changed in the engine:** it used to reject such a stop, now it triggers immediately. `current` still blocks the button, as in production.
+- **Risk modes at Market**: the quantity is recomputed no more than once every 500 ms (the derivation uses a throttled quote; the Bid/Ask buttons stay live).
+- **Several TP levels** (no mockups): "+ Add level" → TP 2 / TP 3 below TP 1. Each level has a "% of position" field; by default 100 → 50/50 → 33/33/34. A level cannot be set above what remains (the input is capped); "12% left" appears when the levels add up to less than 100. A new level's default price is one more TP 1 distance further out. Levels share TP 1's unit (a single menu). Remove with ✕. In the engine every TP leg reduces the SL by its quantity, and the SL cancels every remaining TP. The summary is "TP +… USD (3 levels)", and R:R uses the quantity-weighted TP distance.
+- **Time in force**: the row opens a menu "Day · till Oct 9 / Week · till Oct 16 / Month · till Nov 9 / GTD · pick a date". GTD offers date and time fields, earliest tomorrow; with no time set the order lasts to the end of the day. Limit/Stop: "till Oct 16" (GTD with a time: "till Oct 20 14:30") on the button. `?expireFast=1`: Day = 1 min, Week = 3 min, Month = 10 min.
+- **Market closed**: `?market=closed`, or real US equity hours (09:30–16:00 ET, Mon–Fri) for the `finnhub`/`live` feeds. The banner reads "Market is closed · opens Fri 15:30" in local time. A Market button gets "· at open"; such an order is queued (`activateAt`) and executes at the first quote after the open. The banner is only in `new`; `current` has none, but the queuing in the engine is shared.
+- **Limit/Stop toasts**: "Buy limit 100 AAPL at 199.00 placed" + **Cancel**. A limit that fills at once gets "Bought …" + Close position.
+- **New atoms**: `Banner` (no 2a atom is a notice above the form) and `DateTimeField` (`ValueField` is a numeric field with a suffix and a right-hand value and cannot hold native date/time pickers with a min date). Extended: `ValueField` (warning tone on the right), `FieldCaption` (link action), `ExitLevel` (a field to the right — "% of position"), `TextButton` (onClick), plus `IconButton` (✕).
+- **Panel scrollbar** is hidden (Figma uses an overlay scrollbar; a classic one shifted the layout by 11 px). Wheel and trackpad scrolling still work.
+
+## Chart lines (`?chartLines=1`, both panels)
+
+Dashed lines: entry (blue, "Buy LMT 100"), SL (red, "SL −400.00 USD"), TP / TP1–3 (green, "+800.00 USD"). The price scale stretches to keep every line in view. A line is dragged with the mouse (±6 px from the line): the panel field updates in its current unit (price, ticks, %, USD), and a level is never dragged past the entry. The study turns the flag on for both panels.
+
+## Study (`?study=1`)
+
+Setup screen: participant ID, panel (Current / New / both in random order), scenarios 1–3. Each run has its own URL: `?study=run&pid=…&panel=…&scenario=…&seed=…&chartLines=1`. A run starts from a clean paper account, and the simulator seed is fixed per scenario (1001/1002/1003), so the market repeats. The strip above the interface shows the task, a timer, the submit count and **Done**. Done auto-checks the last submitted `OrderDraft` (side, type, price, quantity ±1, SL, TP, time in force) and opens the next run. The results screen shows a table and exports JSON/CSV; the same exports are in the debug menu (`?debug=1`). Metrics: open → submit time, run start → submit time, submits, validation errors (`validation_error` + engine rejections), cancels/closes.
+
+Scenario 3 ("1 USD above the market") is checked against the Bid at the moment of submit (logged with the `submit` event) with a ±0.25 tolerance (the simulated market moves while the participant types).
+
+## e2e (Playwright, `npm run e2e`)
+
+`e2e/scenarios.spec.ts`: 3 scenarios × 2 panels through the real study flow (setup → run → panel UI → Done → auto-check "yes" → CSV), plus a check that the console has no errors. The final test compares open → submit time for Market (scenario 1): on the last run `current` 400 ms, `new` 234 ms.

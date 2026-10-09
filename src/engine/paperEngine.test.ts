@@ -7,6 +7,7 @@ import {
   computeExpiry,
   createEngineState,
   expireOrders,
+  expiryOverride,
   modifyOrder,
   onQuote,
   placeOrder,
@@ -141,9 +142,10 @@ describe('stop orders', () => {
     expect(s.positions.AAPL).toMatchObject({ qty: -100, avgPrice: 200.99 });
   });
 
-  it('rejects a buy stop at or below Ask', () => {
+  it('a buy stop at or below Ask triggers immediately at Ask', () => {
     const r = placeOrder(createEngineState(), draft({ type: 'stop', stopPrice: 201.5 }), quotes(AAPL), T0);
-    expect(r.events[0]).toMatchObject({ type: 'rejected' });
+    expect(r.events.map((e) => e.type)).toEqual(['placed', 'filled']);
+    expect(r.state.positions.AAPL).toMatchObject({ qty: 100, avgPrice: 201.57 });
   });
 });
 
@@ -194,6 +196,71 @@ describe('brackets (SL / TP)', () => {
   });
 });
 
+describe('multiple take-profit levels', () => {
+  it('each TP fill shrinks the stop; the last one cancels it', () => {
+    const tps = [
+      { price: 203, qty: 50 },
+      { price: 205, qty: 30 },
+      { price: 207, qty: 20 },
+    ];
+    let s = placeOrder(createEngineState(), draft({ takeProfits: tps, stopLoss: 199 }), quotes(AAPL), T0).state;
+    expect(working(s).map((o) => [o.role, o.qty])).toEqual([
+      ['tp', 50],
+      ['tp', 30],
+      ['tp', 20],
+      ['sl', 100],
+    ]);
+    s = onQuote(s, q(203, 203.01), T0).state;
+    expect(working(s).find((o) => o.role === 'sl')?.qty).toBe(50);
+    s = onQuote(s, q(207, 207.01), T0).state;
+    expect(working(s)).toHaveLength(0);
+    expect(s.positions.AAPL).toBeUndefined();
+    expect(s.realizedPnl).toBeCloseTo(50 * 1.43 + 30 * 3.43 + 20 * 5.43, 6);
+  });
+  it('the stop cancels every remaining TP', () => {
+    let s = placeOrder(
+      createEngineState(),
+      draft({
+        takeProfits: [
+          { price: 203, qty: 50 },
+          { price: 205, qty: 50 },
+        ],
+        stopLoss: 199,
+      }),
+      quotes(AAPL),
+      T0,
+    ).state;
+    s = onQuote(s, q(198.99, 199), T0).state;
+    expect(working(s)).toHaveLength(0);
+  });
+  it('rejects levels above the position size', () => {
+    const r = placeOrder(
+      createEngineState(),
+      draft({
+        takeProfits: [
+          { price: 203, qty: 80 },
+          { price: 205, qty: 30 },
+        ],
+      }),
+      quotes(AAPL),
+      T0,
+    );
+    expect(r.events[0].type).toBe('rejected');
+  });
+});
+
+describe('market at open', () => {
+  it('a queued market order waits for the session open', () => {
+    const open = T0 + 3_600_000;
+    let s = placeOrder(createEngineState(), draft({ activateAt: open }), quotes(AAPL), T0).state;
+    expect(working(s)).toHaveLength(1);
+    s = onQuote(s, AAPL, T0 + 1000).state;
+    expect(s.positions.AAPL).toBeUndefined();
+    s = onQuote(s, AAPL, open).state;
+    expect(s.positions.AAPL).toMatchObject({ qty: 100, avgPrice: 201.57 });
+  });
+});
+
 describe('time in force', () => {
   it('computes expiry for Day / Week / Month / GTD', () => {
     const endOf = (d: Date) => (d.setHours(23, 59, 59, 999), d.getTime());
@@ -201,6 +268,14 @@ describe('time in force', () => {
     expect(computeExpiry('week', T0)).toBe(endOf(new Date(2026, 9, 16)));
     expect(computeExpiry('month', T0)).toBe(endOf(new Date(2026, 10, 9)));
     expect(computeExpiry('gtd', T0, new Date(2026, 9, 20).getTime())).toBe(endOf(new Date(2026, 9, 20)));
+  });
+
+  it('GTD with a time expires at that moment; fast expiry overrides calendar lifetimes', () => {
+    const at = new Date(2026, 9, 20, 14, 30).getTime();
+    expect(computeExpiry('gtd', T0, at)).toBe(at);
+    expiryOverride.ms = { day: 60_000, week: 180_000 };
+    expect(computeExpiry('week', T0)).toBe(T0 + 180_000);
+    expiryOverride.ms = null;
   });
 
   it('expired orders move to history with status Expired', () => {

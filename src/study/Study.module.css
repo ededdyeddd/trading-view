@@ -1,0 +1,158 @@
+.setup {
+  height: 100vh;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 64px 16px;
+  background: var(--color-bg-app);
+}
+
+.card {
+  width: 520px;
+  background: var(--color-bg-panel);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wide {
+  width: 960px;
+}
+
+.card h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.row legend,
+.row > span {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.row input[type='text'],
+.row > input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+}
+
+.primary {
+  height: 40px;
+  border-radius: 8px;
+  background: var(--color-blue);
+  color: #fff;
+  font-weight: 600;
+}
+
+.primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.bar {
+  flex: none;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: #131722;
+  color: #fff;
+  font-size: 14px;
+}
+
+.bar a {
+  color: #8ab4ff;
+}
+
+.step {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.task {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.meta {
+  font-size: 12px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.done {
+  height: 28px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: #22ab94;
+  color: #fff;
+  font-weight: 600;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.ok {
+  color: var(--color-green-text);
+  font-weight: 600;
+}
+
+.bad {
+  color: var(--color-red-text);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.actions button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}

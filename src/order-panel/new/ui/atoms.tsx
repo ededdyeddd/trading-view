@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, ChevronUp, LoaderCircle, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Clock3, LoaderCircle, Plus, X } from 'lucide-react';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Side } from '../../../lib/orderMath';
 import { MenuItem, Popover } from '../../../ui/Popover';
@@ -256,21 +256,104 @@ export function ValueField({
         </span>
         {suffix && shown !== '' && <span className={s.suffix}>{suffix}</span>}
       </span>
-      {right && <span className={cx(s.valueRight, rightTone === 'danger' && s.toneDanger, rightTone === 'success' && s.toneSuccess)}>{right}</span>}
+      {right && (
+        <span
+          className={cx(
+            s.valueRight,
+            rightTone === 'danger' && s.toneDanger,
+            rightTone === 'success' && s.toneSuccess,
+            rightTone === 'warning' && s.toneWarning,
+          )}
+        >
+          {right}
+        </span>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-export function FieldCaption({ tone = 'neutral', children, testId }: { tone?: CaptionTone; children: ReactNode; testId?: string }) {
+export function FieldCaption({
+  tone = 'neutral',
+  children,
+  testId,
+  onAction,
+}: {
+  tone?: CaptionTone;
+  children: ReactNode;
+  testId?: string;
+  onAction?: () => void;
+}) {
   return (
     <div
       className={cx(s.caption, tone === 'error' && s.captionError, tone === 'warning' && s.captionWarning)}
       role={tone === 'error' ? 'alert' : undefined}
       data-testid={testId}
     >
-      {children}
+      {onAction ? (
+        <button type="button" className={s.captionLink} onClick={onAction} data-testid={testId ? `${testId}-action` : undefined}>
+          {children}
+        </button>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+export function IconButton({ label, onClick, testId }: { label: string; onClick: () => void; testId?: string }) {
+  return (
+    <button type="button" className={s.iconButton} aria-label={label} title={label} onClick={onClick} data-testid={testId}>
+      <X size={14} strokeWidth={1.8} />
+    </button>
+  );
+}
+
+/** New atom: a notice above the form (e.g. "Market is closed · opens Mon 15:30"). No 2a atom is a page-level banner. */
+export function Banner({ children, testId }: { children: ReactNode; testId?: string }) {
+  return (
+    <div className={s.banner} role="status" data-testid={testId}>
+      <Clock3 size={16} className={s.bannerIcon} />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/**
+ * New atom: GTD date + time. ValueField is a numeric value/suffix/right-value control and cannot host
+ * native date and time pickers with a min date.
+ */
+export function DateTimeField({
+  date,
+  time,
+  minDate,
+  onChange,
+}: {
+  date: string;
+  time: string;
+  minDate: string;
+  onChange: (date: string, time: string) => void;
+}) {
+  return (
+    <div className={s.dateTime}>
+      <input
+        type="date"
+        className={s.dateInput}
+        value={date}
+        min={minDate}
+        onChange={(e) => onChange(e.target.value, time)}
+        aria-label="Good till date"
+        data-testid="nt-gtd-date"
+      />
+      <input
+        type="time"
+        className={cx(s.dateInput, s.timeInput)}
+        value={time}
+        onChange={(e) => onChange(date, e.target.value)}
+        aria-label="Good till time"
+        data-testid="nt-gtd-time"
+      />
     </div>
   );
 }
@@ -295,6 +378,8 @@ export function Switch({ checked, onChange, label, testId }: { checked: boolean;
 
 type ExitLevelProps<T extends string> = {
   label: string;
+  /** Extra field to the right of the value field (TP "% of position"). */
+  aside?: ReactNode;
   unit: T;
   units: MenuOption<T>[];
   onUnit: (u: T) => void;
@@ -308,14 +393,36 @@ type ExitLevelProps<T extends string> = {
 };
 
 /** Label menu + switch + ValueField + caption. Off = grey field with a placeholder. */
-export function ExitLevel<T extends string>({ label, unit, units, onUnit, enabled, onToggle, title, field, caption, captionTone, testId }: ExitLevelProps<T>) {
+export function ExitLevel<T extends string>({
+  label,
+  unit,
+  units,
+  onUnit,
+  enabled,
+  onToggle,
+  title,
+  field,
+  caption,
+  captionTone,
+  testId,
+  aside,
+}: ExitLevelProps<T>) {
   return (
     <div data-testid={testId}>
       <div className={s.exitHeader}>
         <FieldLabelMenu label={label} value={unit} options={units} onChange={onUnit} testId={`${testId}-unit`} />
         <Switch checked={enabled} onChange={onToggle} label={title} testId={`${testId}-toggle`} />
       </div>
-      <ValueField {...field} disabled={!enabled} placeholderStyle="text" />
+      {aside ? (
+        <div className={s.dateTime}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <ValueField {...field} disabled={!enabled} placeholderStyle="text" />
+          </div>
+          {aside}
+        </div>
+      ) : (
+        <ValueField {...field} disabled={!enabled} placeholderStyle="text" />
+      )}
       {enabled && caption && (
         <FieldCaption tone={captionTone} testId={`${testId}-caption`}>
           {caption}
@@ -367,18 +474,19 @@ export function SettingsRow({ title, value, chevron, onClick, testId }: Settings
 
 // ---------------------------------------------------------------------------
 
-/** "+ Add level" — shows a "Coming soon" tooltip in 2a. */
-export function TextButton({ children, tooltip }: { children: ReactNode; tooltip?: string }) {
+/** "+ Add level" text button; with `tooltip` and no handler it shows the tooltip instead ("Coming soon"). */
+export function TextButton({ children, tooltip, onClick }: { children: ReactNode; tooltip?: string; onClick?: () => void }) {
   const [tip, setTip] = useState(false);
   return (
     <button
       type="button"
       className={s.textButton}
       onClick={() => {
+        if (onClick) return onClick();
         setTip(true);
         setTimeout(() => setTip(false), 1500);
       }}
-      onMouseEnter={() => setTip(true)}
+      onMouseEnter={() => tooltip && setTip(true)}
       onMouseLeave={() => setTip(false)}
       data-testid="nt-add-level"
     >

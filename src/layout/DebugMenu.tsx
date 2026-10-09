@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { clearEvents, exportEventsJson, getEvents, onEventsChange } from '../analytics/eventLog';
 import { DEBUG, FEED_MODE, PANEL_VARIANT } from '../config/flags';
 import { dropLiveFeeds } from '../market/marketStore';
+import { download as downloadFile, loadSession, sessionCsv, sessionJson } from '../study/studyStore';
 import { useTradingStore } from '../store/tradingStore';
 import styles from './DebugMenu.module.css';
 
@@ -48,6 +49,26 @@ export function DebugMenu() {
           </button>
           <button type="button" onClick={clearEvents}>
             Clear events
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const s = loadSession();
+              if (s) downloadFile(`study-${s.pid}.json`, sessionJson(s), 'application/json');
+            }}
+            data-testid="export-study-json"
+          >
+            Export study JSON (participant)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const s = loadSession();
+              if (s) downloadFile(`study-${s.pid}.csv`, sessionCsv(s), 'text/csv');
+            }}
+            data-testid="export-study-csv"
+          >
+            Export study CSV (participant)
           </button>
           <hr />
           <button type="button" onClick={dropLiveFeeds} data-testid="drop-feeds">

@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { STUDY } from './config/flags';
+import { StudyBar } from './study/StudyScreens';
 import { BottomPanel } from './layout/bottom/BottomPanel';
 import { ChartPane } from './layout/chart/ChartPane';
 import { DebugMenu } from './layout/DebugMenu';
@@ -23,6 +25,7 @@ export function App() {
 
   return (
     <div className={styles.app}>
+      {STUDY === 'run' && <StudyBar />}
       <TopToolbar />
       <div className={styles.body}>
         <LeftToolbar />

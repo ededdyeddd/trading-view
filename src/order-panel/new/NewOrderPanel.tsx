@@ -1,18 +1,21 @@
 import { Ellipsis, Grid2x2Plus, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { logEvent } from '../../analytics/eventLog';
 import { getSpec, pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber, fmtPrice, fmtQty } from '../../lib/format';
 import type { ExitKind, OrderType } from '../../lib/orderMath';
 import { useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
+import type { PriceUnit } from '../../order-ticket/types';
 import { now, useTradingStore } from '../../store/tradingStore';
 import { useUiStore } from '../../store/uiStore';
+import { MenuItem, Popover } from '../../ui/Popover';
 import { Checkbox } from '../../ui/Switch';
 import { SymbolLogo } from '../../ui/SymbolLogo';
 import styles from './NewOrderPanel.module.css';
 import {
   EXIT_UNITS,
-  QTY_UNITS_2A,
+  QTY_UNITS,
+  TIFS,
   exitMenuValue,
   exitPlaceholder,
   exitText,
@@ -21,18 +24,29 @@ import {
   fillToastText,
   formatExitInput,
   formatQtyInput,
+  levelText,
+  marketClosedText,
+  percentLeftText,
+  placedToastText,
+  priceLabel,
+  priceText,
+  priceUnitLabel,
   qtyMenuValue,
   qtyText,
   qtyUnitLabel,
   riskRewardText,
   submitText,
   summaryText,
-  tifText,
+  tifMenuText,
+  tifRowText,
 } from './presenters';
 import {
+  Banner,
+  DateTimeField,
   ExitLevel,
   FieldCaption,
   FieldLabelMenu,
+  IconButton,
   InfoRow,
   OrderSummary,
   SegmentedControl,
@@ -44,32 +58,50 @@ import {
   ValueField,
 } from './ui/atoms';
 
-const TYPES: { id: OrderType; label: string; disabled?: boolean }[] = [
+const TYPES: { id: OrderType; label: string }[] = [
   { id: 'market', label: 'Market' },
-  { id: 'limit', label: 'Limit', disabled: true },
-  { id: 'stop', label: 'Stop', disabled: true },
+  { id: 'limit', label: 'Limit' },
+  { id: 'stop', label: 'Stop' },
 ];
 
 const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
-/** Redesigned order ticket (step 2a: Market). A thin view over useOrderTicket(); no math here. */
+function ymd(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Redesigned order ticket: Market / Limit / Stop, risk-first sizing. A thin view over useOrderTicket(); no math here. */
 export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
-  const { state, view, spec } = ticket;
+  const { state, view, spec, quote } = ticket;
   const t = useTicketStore.getState();
   const [tab, setTab] = useState<'order' | 'dom'>('order');
   const [exitsOpen, setExitsOpen] = useState(true);
   const [extraOpen, setExtraOpen] = useState(false);
-  const [typeHint, setTypeHint] = useState(false);
+  const [tifOpen, setTifOpen] = useState(false);
+  const tifRef = useRef<HTMLDivElement>(null);
+  const slInputFocus = useRef(false);
 
+  const price = priceText(state, view, spec);
   const qty = qtyText(state, view, spec);
   const submit = submitText(state, view, spec);
-  const summary = view.canSubmit && !view.marginExceeded ? summaryText(view) : null;
+  const summary = view.canSubmit ? summaryText(view) : null;
+  const leftText = percentLeftText(view);
+
+  // "Turn on stop loss" link: focus the SL field once it is enabled.
+  useEffect(() => {
+    if (slInputFocus.current && state.sl.enabled) {
+      slInputFocus.current = false;
+      requestAnimationFrame(() => (document.querySelector('[data-testid=nt-sl-input]') as HTMLInputElement | null)?.focus());
+    }
+  }, [state.sl.enabled]);
 
   // Log each distinct validation error the user runs into (once per change).
   const lastReason = useRef<string | null>(null);
   useEffect(() => {
-    const isError = submit.reason && !submit.reason.startsWith('Enter quantity') && !submit.reason.startsWith('Waiting');
-    const key = isError ? submit.reason : null;
+    // Prompts that are part of the normal flow ("Enter …", "Set stop loss to calculate size") are not errors.
+    const quiet = !submit.reason || /^(Enter|Waiting|Set stop loss)/.test(submit.reason);
+    const key = quiet ? null : submit.reason;
     if (key && key !== lastReason.current) logEvent('validation_error', { reason: key });
     lastReason.current = key;
   }, [submit.reason]);
@@ -80,15 +112,20 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
       return;
     }
     const events = t.submit(view, { silent: true });
-    const filled = events.find((e) => e.type === 'filled' && e.order?.role === 'entry');
+    const entryFill = events.find((e) => e.type === 'filled' && e.order?.role === 'entry');
+    const placed = events.find((e) => e.type === 'placed' && e.order?.role === 'entry');
     const rejected = events.find((e) => e.type === 'rejected');
     const trading = useTradingStore.getState();
-    if (filled?.order && filled.order.fillPrice !== undefined) {
-      const order = filled.order;
+    if (rejected) {
+      trading.pushToast({ ...rejected });
+      return;
+    }
+    if (entryFill?.order && entryFill.order.fillPrice !== undefined) {
+      const order = entryFill.order;
       const orderSpec = getSpec(order.symbol);
       trading.pushToast({
         type: 'filled',
-        time: filled.time,
+        time: entryFill.time,
         symbol: order.symbol,
         title: fillToastText(order.side, order.qty, order.fillPrice!, orderSpec),
         message: '',
@@ -110,13 +147,24 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
           },
         },
       });
-      t.clearQty();
-    } else if (rejected) {
-      trading.pushToast({ ...rejected });
+    } else if (placed?.order) {
+      const order = placed.order;
+      const orderSpec = getSpec(order.symbol);
+      const px = order.type === 'limit' ? order.limitPrice : order.type === 'stop' ? order.stopPrice : undefined;
+      trading.pushToast({
+        type: 'placed',
+        time: placed.time,
+        symbol: order.symbol,
+        title: placedToastText(order.side, order.type, order.qty, px, orderSpec),
+        message: '',
+        ttl: 8000,
+        action: { label: 'Cancel', run: () => useTradingStore.getState().cancelOrder(order.id) },
+      });
     }
+    t.clearQty();
   };
 
-  const exitBlock = (kind: ExitKind) => {
+  const exitBlock = (kind: ExitKind, aside?: ReactNode) => {
     const ex = view[kind];
     const text = exitText(kind, state, view, spec);
     const decimals = ex.unit === 'price' ? pricePrecision(spec) : ex.unit === 'ticks' ? 0 : 2;
@@ -124,12 +172,13 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
       <ExitLevel
         testId={`nt-${kind}`}
         title={exitTitle(kind)}
-        label={`${exitTitle(kind)} ${exitUnitLabel(kind, ex.unit)}`}
+        label={`${exitTitle(kind)}${kind === 'tp' && view.tpLevels.length > 1 && state.tp.enabled ? ' 1' : ''} ${exitUnitLabel(kind, ex.unit)}`}
         unit={ex.unit}
         units={EXIT_UNITS.map((u) => ({ value: u, label: capitalize(exitUnitLabel(kind, u)), end: exitMenuValue(kind, u, view, spec) }))}
         onUnit={(u) => t.setExitUnit(kind, u, view)}
         enabled={ex.enabled}
         onToggle={(v) => t.setExitEnabled(kind, v, view)}
+        aside={aside}
         field={{
           value: ex.enabled ? ex.input : '',
           display: ex.enabled ? formatExitInput(ex.input, ex.unit, spec) : '',
@@ -151,7 +200,27 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     );
   };
 
+  const percentField = (index: number) => {
+    const raw = index === 0 ? state.tpPercent : (state.tpLevels[index - 1]?.percent ?? '');
+    return (
+      <div className={styles.percent}>
+        <ValueField
+          value={raw}
+          onChange={(v) => t.setTpPercent(index, v)}
+          placeholder={String(view.tpLevels[index]?.percent ?? 0)}
+          suffix="%"
+          disabled={!state.tp.enabled}
+          ariaLabel={`Take profit ${index + 1}, % of position`}
+          testId={`nt-tp${index + 1}-percent`}
+          onEnter={doSubmit}
+        />
+      </div>
+    );
+  };
+
+  const multi = state.tp.enabled && view.tpLevels.length > 1;
   const slHasCaption = view.sl.enabled && !!exitText('sl', state, view, spec).caption;
+  const today = now();
 
   return (
     <div className={styles.panel} data-testid="order-panel" data-variant="new">
@@ -172,29 +241,70 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
       ) : (
         <>
           <div className={styles.scroll}>
+            {view.opensAt !== null && (
+              <div className={`${styles.px} ${styles.banner}`}>
+                <Banner testId="nt-market-closed">{marketClosedText(view.opensAt)}</Banner>
+              </div>
+            )}
             <div className={`${styles.px} ${styles.bs}`}>
               <SideToggle
                 side={state.side}
-                bid={view.ready ? fmtPrice(view.bid, spec) : '—'}
-                ask={view.ready ? fmtPrice(view.ask, spec) : '—'}
-                spread={view.ready ? fmtNumber(view.spread, pricePrecision(spec), { grouping: false }) : ''}
+                bid={quote ? fmtPrice(quote.bid, spec) : '—'}
+                ask={quote ? fmtPrice(quote.ask, spec) : '—'}
+                spread={quote ? fmtNumber(quote.ask - quote.bid, pricePrecision(spec), { grouping: false }) : ''}
                 onChange={t.setSide}
               />
               <div className={styles.typeWrap}>
-                <UnderlineTabs
-                  items={TYPES}
-                  value={state.type}
-                  onChange={(id) => {
-                    if (id === 'market') t.setType(id);
-                    else {
-                      setTypeHint(true);
-                      setTimeout(() => setTypeHint(false), 1500);
-                    }
-                  }}
-                />
-                {typeHint && <span className={styles.hint}>Limit and Stop are coming soon</span>}
+                <UnderlineTabs items={TYPES} value={state.type} onChange={t.setType} />
               </div>
             </div>
+
+            {/* Limit / Stop price — the only block the order type changes */}
+            {state.type !== 'market' && (
+              <div className={`${styles.px} ${styles.qty}`}>
+                <div className={styles.qtyLabel}>
+                  <FieldLabelMenu<PriceUnit>
+                    label={
+                      state.priceUnit === 'price' ? priceLabel(state.type) : `${priceLabel(state.type)}, ${priceUnitLabel('ticks', state.side).toLowerCase()}`
+                    }
+                    value={state.priceUnit}
+                    options={(['price', 'ticks'] as PriceUnit[]).map((u) => ({
+                      value: u,
+                      label: priceUnitLabel(u, state.side),
+                      end:
+                        u === 'price'
+                          ? view.price?.value != null
+                            ? fmtPrice(view.price.value, spec)
+                            : ''
+                          : view.price?.offsetTicks != null
+                            ? `${Math.abs(view.price.offsetTicks)} ticks`
+                            : '',
+                    }))}
+                    onChange={(u) => t.setPriceUnit(u, view)}
+                    testId="nt-price-unit"
+                  />
+                </div>
+                <ValueField
+                  value={state.priceInput}
+                  onChange={t.setPriceInput}
+                  placeholder={price.placeholder}
+                  suffix={price.suffix}
+                  right={price.right}
+                  rightTone={price.rightTone}
+                  state={price.captionTone === 'warning' ? 'warning' : 'default'}
+                  step={state.priceUnit === 'price' ? spec.tickSize : 1}
+                  decimals={state.priceUnit === 'price' ? pricePrecision(spec) : 0}
+                  onEnter={doSubmit}
+                  ariaLabel={priceLabel(state.type)}
+                  testId="nt-price"
+                />
+                {price.caption && (
+                  <FieldCaption tone={price.captionTone} testId="nt-price-caption">
+                    {price.caption}
+                  </FieldCaption>
+                )}
+              </div>
+            )}
 
             {/* Quantity */}
             <div className={`${styles.px} ${styles.qty}`}>
@@ -202,12 +312,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 <FieldLabelMenu
                   label={qtyUnitLabel(state.qtyUnit, spec)}
                   value={state.qtyUnit}
-                  options={QTY_UNITS_2A.map(({ unit, enabled }) => ({
-                    value: unit,
-                    label: qtyUnitLabel(unit, spec),
-                    end: enabled ? qtyMenuValue(unit, view, spec) : undefined,
-                    disabled: !enabled,
-                  }))}
+                  options={QTY_UNITS.map((unit) => ({ value: unit, label: qtyUnitLabel(unit, spec), end: qtyMenuValue(unit, view, spec) }))}
                   onChange={(u) => t.setQtyUnit(u, view)}
                   testId="nt-qty-unit"
                 />
@@ -227,7 +332,19 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 testId="nt-qty"
               />
               {qty.caption && (
-                <FieldCaption tone={qty.captionTone} testId="nt-qty-caption">
+                <FieldCaption
+                  tone={qty.captionTone}
+                  testId="nt-qty-caption"
+                  onAction={
+                    qty.captionAction === 'enable-sl'
+                      ? () => {
+                          slInputFocus.current = true;
+                          setExitsOpen(true);
+                          t.setExitEnabled('sl', true, view);
+                        }
+                      : undefined
+                  }
+                >
                   {qty.caption}
                 </FieldCaption>
               )}
@@ -240,24 +357,95 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 <div className={styles.exits}>
                   {exitBlock('sl')}
                   <div style={{ height: slHasCaption ? 12 : 16 }} />
-                  {exitBlock('tp')}
+                  {exitBlock('tp', multi ? percentField(0) : undefined)}
+                  {multi &&
+                    state.tpLevels.map((l, i) => {
+                      const index = i + 1;
+                      const lv = view.tpLevels[index];
+                      const text = levelText('tp', state.tp.unit, lv?.level ?? null, state.side, spec, view.qty.units > 0, lv?.money ?? undefined);
+                      return (
+                        <div key={index} className={styles.level} data-testid={`nt-tp${index + 1}`}>
+                          <div className={styles.levelHeader}>
+                            <span className={styles.levelTitle}>
+                              Take profit {index + 1} {exitUnitLabel('tp', state.tp.unit)}
+                            </span>
+                            <IconButton label={`Remove take profit ${index + 1}`} onClick={() => t.removeTpLevel(index)} testId={`nt-tp${index + 1}-remove`} />
+                          </div>
+                          <div className={styles.levelRow}>
+                            <div className={styles.levelValue}>
+                              <ValueField
+                                value={l.input}
+                                display={formatExitInput(l.input, state.tp.unit, spec)}
+                                onChange={(v) => t.setTpLevelInput(index, v)}
+                                placeholder={exitPlaceholder(state.tp.unit)}
+                                placeholderStyle="text"
+                                suffix={text.suffix}
+                                right={text.right}
+                                rightTone={text.rightTone}
+                                state={text.captionTone === 'error' ? 'error' : 'default'}
+                                step={state.tp.unit === 'price' ? spec.tickSize : 1}
+                                decimals={state.tp.unit === 'price' ? pricePrecision(spec) : 0}
+                                onEnter={doSubmit}
+                                ariaLabel={`Take profit ${index + 1}`}
+                                testId={`nt-tp${index + 1}-input`}
+                              />
+                            </div>
+                            {percentField(index)}
+                          </div>
+                          {text.caption && <FieldCaption tone={text.captionTone}>{text.caption}</FieldCaption>}
+                        </div>
+                      );
+                    })}
+                  {leftText && (
+                    <FieldCaption tone="neutral" testId="nt-percent-left">
+                      {leftText}
+                    </FieldCaption>
+                  )}
                   {view.riskReward !== null && (
                     <div className={styles.rr}>
                       <InfoRow label={'Risk / Reward'} value={riskRewardText(view.riskReward)} />
                     </div>
                   )}
-                  {(state.sl.enabled || state.tp.enabled) && (
+                  {state.tp.enabled && state.tpLevels.length < 2 && (
                     <div className={styles.addLevel}>
-                      <TextButton tooltip="Coming soon">Add level</TextButton>
+                      <TextButton onClick={() => t.addTpLevel(view)}>Add level</TextButton>
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Time in force (not expandable in 2a) */}
+            {/* Time in force */}
             <div className={`${styles.px} ${styles.section}`}>
-              <SettingsRow title="Time in force" value={tifText(state.tif, now())} chevron="right" testId="nt-tif" />
+              <div ref={tifRef}>
+                <SettingsRow
+                  title="Time in force"
+                  value={tifRowText(state, today)}
+                  chevron={tifOpen ? 'up' : 'right'}
+                  onClick={() => setTifOpen((v) => !v)}
+                  testId="nt-tif"
+                />
+              </div>
+              <Popover anchor={tifRef} open={tifOpen} onClose={() => setTifOpen(false)} align="end">
+                {TIFS.map((tif) => (
+                  <MenuItem
+                    key={tif}
+                    active={tif === state.tif}
+                    onSelect={() => {
+                      if (tif === 'gtd') t.setGtd(state.gtdDate || ymd(today + 86_400_000), state.gtdTime);
+                      else t.setTif(tif);
+                      setTifOpen(false);
+                    }}
+                  >
+                    <span data-testid={`nt-tif-${tif}`}>{tifMenuText(tif, today, state)}</span>
+                  </MenuItem>
+                ))}
+              </Popover>
+              {state.tif === 'gtd' && (
+                <div className={styles.extra}>
+                  <DateTimeField date={state.gtdDate} time={state.gtdTime} minDate={ymd(today + 86_400_000)} onChange={(d, tm) => t.setGtd(d, tm)} />
+                </div>
+              )}
             </div>
 
             {/* Extra settings */}

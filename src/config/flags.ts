@@ -32,3 +32,21 @@ export const SANDBOX: 'atoms' | 'panel' | null = params.get('sandbox') === '1' ?
 
 /** Freeze simulated prices (AAPL 201.56 / 201.57) for pixel comparisons (?freeze=1). */
 export const FREEZE = params.get('freeze') === '1';
+
+/** Force a closed US stock session (?market=closed). */
+export const MARKET_CLOSED = params.get('market') === 'closed';
+
+/** Shorten order lifetimes for expiry testing (?expireFast=1): Day = 1 min, Week = 3 min, Month = 10 min. */
+export const EXPIRE_FAST = params.get('expireFast') === '1';
+
+/** Draw ticket levels on the chart and let them be dragged (?chartLines=1), for both panels. */
+export const CHART_LINES = params.get('chartLines') === '1';
+
+/** Deterministic simulator seed (?seed=…), used by study scenarios. */
+export const SEED: number | null = params.get('seed') !== null ? Number(params.get('seed')) || 0 : null;
+
+/** Usability study: `?study=1` setup screen, `?study=run` a scenario run, `?study=done` the summary. */
+export const STUDY: 'setup' | 'run' | 'done' | null =
+  params.get('study') === '1' ? 'setup' : params.get('study') === 'run' ? 'run' : params.get('study') === 'done' ? 'done' : null;
+export const STUDY_PID = params.get('pid') ?? '';
+export const STUDY_SCENARIO = Number(params.get('scenario')) || 0;

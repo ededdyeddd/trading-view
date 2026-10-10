@@ -280,3 +280,4 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - `?exitsRow=1` was not built in this branch, so there is nothing to keep for comparison.
 - Switch off state follows Figma 4135:159173: track `#ddd` (`--nt-switch-off`), 14 px dot with a `0 1px 1px rgba(0,0,0,.04)` shadow. Only the new panel; the on state and the `current` panel are unchanged.
 - `docs/PRD.md` FR-6.3 replaced with the current wording from the source document. Other places in the PRD (Appendix D tables with grey money for off levels) are left as history; the prompt of 10 Oct wins.
+- Cursor over a switched-off field is the text cursor (like an input), not pointer as the 10 Oct prompt said — changed at the user's request.

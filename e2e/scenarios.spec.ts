@@ -494,13 +494,13 @@ test.describe('new · switched-off SL / TP read "Set at {value}" (FR-6.3, frozen
     await expect(page.getByTestId('nt-sl').locator('input, [data-testid$="-caption"]')).toHaveCount(0);
   });
 
-  test('2 · hover: main text colour and a pointer', async ({ page }) => {
+  test('2 · hover: main text colour and the text cursor', async ({ page }) => {
     await openMarket(page);
     const color = () => sl(page).evaluate((el) => getComputedStyle(el).color);
     expect(await color()).toBe('rgb(112, 112, 112)');
     await sl(page).hover();
     expect(await color()).toBe('rgb(19, 23, 34)');
-    expect(await sl(page).evaluate((el) => getComputedStyle(el).cursor)).toBe('pointer');
+    expect(await sl(page).evaluate((el) => getComputedStyle(el).cursor)).toBe('text');
   });
 
   test('3 · a click on the TP field turns it on: 209.63 selected, +806.00 USD on the right', async ({ page }) => {

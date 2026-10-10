@@ -253,3 +253,10 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - **Summary** (pure `exitsSummary`): `SL −407.00 USD · TP up to +818.00 USD · 3 exits`, orange warnings `20 shares without SL/TP` / `No stop loss`, "N exits" dropped first when the line does not fit (at 320 px it often is), R:R not shown. The reason strings: `Reduce exits to 100 shares`, `Stop loss must be below entry`, `Take profit must be above entry`.
 - **Risk sizing** with levels uses the share-weighted average stop distance (levels without an SL do not count). Stop losses of levels cannot use Risk USD / Risk % balance while Quantity is in a risk mode (same as the single SL).
 - Up to 5 levels (`MAX_LEVELS`; the spec gives no limit). Chart lines: `SL1…` / `TP1…` per level, draggable.
+
+# Expires (replaces Time in force), 10 Oct
+
+- Row "Expires" with the date only; menu Day / Week / Month / On date (GTD) with the dates on the right; Figma 4111:95338 and 4135:151783. Button: Limit / Stop "· till Oct 15", Day "· till 4:00 PM", GTD "· till Oct 24" (date only), Market no term.
+- **paperEngine untouched:** Day still expires at the end of the local day, Week / Month at the end of that day. "4:00 PM" is the session close **as displayed** (stocks; 24 h markets say 11:59 PM). Only GTD actually uses it: a date without a time expires at 16:00 local (rule `expiresAtSessionClose`, new panel only — `current` keeps the end of the day). It is local time, not ET.
+- "On date" without a date blocks Limit / Stop ("Pick an expiry date"); the menu no longer pre-fills tomorrow.
+- Date and time fields (from the platform screenshots): a calendar (Mo–Su, today underlined, chosen day dark, days before tomorrow off) and a list of quarter-hour times, both also typeable.

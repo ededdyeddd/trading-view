@@ -33,9 +33,9 @@ import {
   submitText,
   summaryParts,
   summaryText,
-  tifMenuText,
-  tifRowText,
-  tifText,
+  expiresMenuItem,
+  expiresRowText,
+  expiresValue,
 } from './presenters';
 
 // Figma / prompt reference: Market Buy, entry = Ask 201.57, balance 99,953.90 USD.
@@ -193,10 +193,11 @@ describe('Summary and submit button (step 3 table)', () => {
   });
 });
 
-describe('Time in force', () => {
-  it('Week = today + 7 days', () => {
-    expect(tifText('week', NOW)).toBe('Week · Oct 15');
-    expect(tifText('day', NOW)).toBe('Day · Oct 8');
+describe('Expires', () => {
+  it('Week = today + 7 days, Month = +1 month, Day = the session close', () => {
+    expect(expiresValue('week', NOW, st(), AAPL)).toBe('Oct 15');
+    expect(expiresValue('month', NOW, st(), AAPL)).toBe('Nov 8');
+    expect(expiresValue('day', NOW, st(), AAPL)).toBe('Today, 4:00 PM');
   });
 });
 
@@ -367,22 +368,47 @@ describe('Block 3. Risk modes', () => {
   });
 });
 
-describe('Block 4. Time in force', () => {
-  it('row and menu formats', () => {
-    expect(tifRowText(st(), NOW)).toBe('Week · Oct 15');
-    expect(tifMenuText('day', NOW, st())).toBe('Day · till Oct 8');
-    expect(tifMenuText('week', NOW, st())).toBe('Week · till Oct 15');
-    expect(tifMenuText('month', NOW, st())).toBe('Month · till Nov 8');
-    expect(tifMenuText('gtd', NOW, st())).toBe('GTD · pick a date');
-    const g = st({ tif: 'gtd', gtdDate: '2026-10-20', gtdTime: '14:30' });
-    expect(tifRowText(g, NOW)).toBe('GTD · Oct 20 14:30');
-    expect(tifText('week', NOW)).toBe('Week · Oct 15');
+describe('Block 4. Expires', () => {
+  it('row: the date only, without the name of the choice', () => {
+    expect(expiresRowText(st(), NOW, AAPL)).toBe('Oct 15');
+    expect(expiresRowText(st({ tif: 'day' }), NOW, AAPL)).toBe('Today, 4:00 PM');
+    expect(expiresRowText(st({ tif: 'month' }), NOW, AAPL)).toBe('Nov 8');
+    expect(expiresRowText(st({ tif: 'gtd' }), NOW, AAPL)).toBe('Pick a date');
+    expect(expiresRowText(st({ tif: 'gtd', gtdDate: '2026-10-24' }), NOW, AAPL)).toBe('Oct 24, 4:00 PM'); // time defaults to the close
+    expect(expiresRowText(st({ tif: 'gtd', gtdDate: '2026-10-24', gtdTime: '14:30' }), NOW, AAPL)).toBe('Oct 24, 2:30 PM');
   });
-  it('GTD on the button: "till Oct 20 14:30"; market has no date', () => {
-    const g = st({ type: 'limit', priceInput: '199', qtyInput: '100', tif: 'gtd', gtdDate: '2026-10-20', gtdTime: '14:30' });
-    expect(submitText(g, nv(g), AAPL).secondary).toBe('100 AAPL · LMT 199.00 · till Oct 20 14:30');
+  it('menu: name on the left, date on the right', () => {
+    const items = (['day', 'week', 'month', 'gtd'] as const).map((t) => expiresMenuItem(t, NOW, st(), AAPL));
+    expect(items).toEqual([
+      { label: 'Day', value: 'Today, 4:00 PM' },
+      { label: 'Week', value: 'Oct 15' },
+      { label: 'Month', value: 'Nov 8' },
+      { label: 'On date (GTD)', value: 'Pick a date' },
+    ]);
+    expect(expiresMenuItem('gtd', NOW, st({ tif: 'gtd', gtdDate: '2026-10-24' }), AAPL).value).toBe('Oct 24, 4:00 PM');
+  });
+  it('24 h markets expire at the end of the day', () => {
+    const btc = getSpec('BTCUSDT');
+    expect(expiresValue('day', NOW, st(), btc)).toBe('Today, 11:59 PM');
+  });
+  it('button: Limit / Stop show "till <date>", Day "till 4:00 PM", GTD the date only; Market no term', () => {
+    const lim = (p: Partial<TicketState>) => st({ type: 'limit', priceInput: '199', qtyInput: '100', ...p });
+    expect(submitText(lim({}), nv(lim({})), AAPL).secondary).toBe('100 AAPL · LMT 199.00 · till Oct 15');
+    expect(submitText(lim({ tif: 'day' }), nv(lim({ tif: 'day' })), AAPL).secondary).toBe('100 AAPL · LMT 199.00 · till 4:00 PM');
+    const g = lim({ tif: 'gtd', gtdDate: '2026-10-24', gtdTime: '14:30' });
+    expect(submitText(g, nv(g), AAPL).secondary).toBe('100 AAPL · LMT 199.00 · till Oct 24');
     const m = st({ qtyInput: '100' });
     expect(submitText(m, nv(m), AAPL).secondary).toBe('100 AAPL · MKT');
+  });
+  it('"On date" without a date blocks a Limit / Stop with a reason; Market does not care', () => {
+    const g = st({ type: 'limit', priceInput: '199', qtyInput: '100', tif: 'gtd' });
+    expect(submitText(g, nv(g), AAPL)).toMatchObject({ secondary: 'Pick an expiry date', disabled: true });
+    const m = st({ qtyInput: '100', tif: 'gtd' });
+    expect(submitText(m, nv(m), AAPL).disabled).toBe(false);
+  });
+  it('a GTD date without a time expires at the session close (16:00)', () => {
+    const g = st({ type: 'limit', priceInput: '199', qtyInput: '100', tif: 'gtd', gtdDate: '2026-10-24' });
+    expect(nv(g).draft?.expiresAt).toBe(new Date(2026, 9, 24, 16, 0, 0).getTime());
   });
 });
 

@@ -25,6 +25,7 @@ import {
   exitUnitInfo,
   exitUnitLabel,
   fillToastText,
+  gtdTimeOrClose,
   formatExitInput,
   formatQtyInput,
   exitHeadingText,
@@ -43,8 +44,8 @@ import {
   riskRewardText,
   submitText,
   summaryParts,
-  tifMenuText,
-  tifRowText,
+  expiresMenuItem,
+  expiresRowText,
 } from './presenters';
 import {
   Banner,
@@ -408,35 +409,45 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
               )}
             </div>
 
-            {/* Time in force */}
+            {/* Expires */}
             <div className={`${styles.px} ${styles.section}`}>
               <div ref={tifRef}>
                 <SettingsRow
-                  title="Time in force"
-                  value={tifRowText(state, today)}
+                  title="Expires"
+                  value={expiresRowText(state, today, spec)}
                   chevron={tifOpen ? 'up' : 'right'}
                   onClick={() => setTifOpen((v) => !v)}
                   testId="nt-tif"
                 />
               </div>
               <Popover anchor={tifRef} open={tifOpen} onClose={() => setTifOpen(false)} align="end">
-                {TIFS.map((tif) => (
-                  <MenuItem
-                    key={tif}
-                    active={tif === state.tif}
-                    onSelect={() => {
-                      if (tif === 'gtd') t.setGtd(state.gtdDate || ymd(today + 86_400_000), state.gtdTime);
-                      else t.setTif(tif);
-                      setTifOpen(false);
-                    }}
-                  >
-                    <span data-testid={`nt-tif-${tif}`}>{tifMenuText(tif, today, state)}</span>
-                  </MenuItem>
-                ))}
+                {TIFS.map((tif) => {
+                  const item = expiresMenuItem(tif, today, state, spec);
+                  return (
+                    <MenuItem
+                      key={tif}
+                      active={tif === state.tif}
+                      end={item.value}
+                      onSelect={() => {
+                        // "On date" opens the date and time picker below the row; the date stays unset until it is picked.
+                        if (tif === 'gtd') t.setGtd(state.gtdDate, state.gtdTime);
+                        else t.setTif(tif);
+                        setTifOpen(false);
+                      }}
+                    >
+                      <span data-testid={`nt-tif-${tif}`}>{item.label}</span>
+                    </MenuItem>
+                  );
+                })}
               </Popover>
               {state.tif === 'gtd' && (
                 <div className={styles.extra}>
-                  <DateTimeField date={state.gtdDate} time={state.gtdTime} minDate={ymd(today + 86_400_000)} onChange={(d, tm) => t.setGtd(d, tm)} />
+                  <DateTimeField
+                    date={state.gtdDate}
+                    time={gtdTimeOrClose(state, spec)}
+                    minDate={ymd(today + 86_400_000)}
+                    onChange={(d, tm) => t.setGtd(d, tm)}
+                  />
                 </div>
               )}
             </div>

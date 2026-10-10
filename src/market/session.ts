@@ -42,3 +42,11 @@ export function sessionOpensAt(symbol: string, now: number): number | null {
   if ((FEED_MODE === 'finnhub' || FEED_MODE === 'live') && !isRegularSession(now)) return nextUsOpen(now);
   return null;
 }
+
+/**
+ * The time an order with Day / "On date" expires by default, as "HH:MM": the close of the regular session
+ * (stocks, 16:00 — displayed as 4:00 PM); '' for 24 h markets, where the engine uses the end of the day.
+ */
+export function sessionCloseTime(symbol: string): string {
+  return getSpec(symbol).assetClass === 'stock' ? '16:00' : '';
+}

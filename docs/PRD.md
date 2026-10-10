@@ -58,7 +58,7 @@
 
 **Сценарий 1. Быстрая сделка по рынку (новичок, AAPL).**
 
-1. Открывает панель: Buy / Sell, типы Market / Limit / Stop, Quantity, Exits, Time in force, кнопка.
+1. Открывает панель: Buy / Sell, типы Market / Limit / Stop, Quantity, Exits, Expires, кнопка.
 2. Нажимает Buy — кнопка становится синей.
 3. Вводит 100 shares. Справа — 20,157.00 USD, под полем — «Margin 403.14 USD · Tick 1.00 USD».
 4. Включает SL 197.50 и TP 211.00. Видит −407.00 USD, +943.00 USD и R:R 1 : 2.32.
@@ -70,7 +70,7 @@
 2. В меню Quantity выбирает Risk USD и вводит 400.00.
 3. Включает SL 195.00. Панель считает объём (округляет вниз); фактический риск виден справа в поле SL и в сводке.
 4. Включает TP 207.00. Видит прибыль в USD и R:R 1 : 2.00.
-5. Видит срок в строке Time in force: «Week · Oct 15».
+5. Видит срок в строке Expires: «Week · Oct 15».
 6. Читает сводку и кнопку «Buy · 100 AAPL · LMT 199.00 · till Oct 15». Отправляет.
 
 User stories:
@@ -94,7 +94,7 @@ User stories:
 - Поле Limit Price с отступом от Ask / Bid и предупреждением «Fills now».
 - Поле Quantity с меню единиц: Shares, USD, % balance, Risk USD, Risk % balance.
 - Exits: Stop loss и Take profit с переключателем, меню единиц, суммой в USD, расстоянием от входа; строка Risk / Reward; кнопка «Add partial exit».
-- Строки Time in force (с датой окончания) и Extra settings (свёрнута).
+- Строки Expires (с датой окончания) и Extra settings (свёрнута).
 - Сводка над кнопкой и двухстрочная кнопка с причиной блокировки.
 - Валидация с текстом причины.
 
@@ -186,16 +186,16 @@ User stories:
 - FR-6.7. Когда включены SL и TP — строка «Risk / Reward 1 : 2.32».
 - FR-6.8. Несколько уровней выхода (спека от 10 окт). Один уровень — обычные поля SL / TP. Ссылка «+ Add partial exit» (видна при включённых SL и TP) делит количество последнего уровня пополам (вниз до шага, остаток у последнего), копирует его SL, TP сдвигает на шаг: tp_new = tp_last + (tp_last − tp_prev), для первого tp_prev = вход. Ссылка неактивна («Not enough shares to split»), если у последнего уровня меньше двух шагов. Уровней 2+: поля заменены списком строк (по TP от ближнего к дальнему, без TP — в конце) «Exit n · 50 shares · 50%» / «TP 50 @ 206.00 · SL 50 @ 197.50» («TP off», «SL off» оранжевым, неверная сторона — красным) с корзиной; над списком «Protected size · 100%» и полоса (зелёная при 100%, оранжевая ниже). Клик по строке — редактор уровня (Shares, TP, SL с теми же единицами). Удаление уровня отдаёт его акции предыдущему (первому — следующему); остаётся один — снова поля с его значениями. Количество уровня правится независимо (Protected size пересчитывается, 0 = уровень удалён); при смене количества ордера уровни сохраняют доли, остаток округления — у Exit 1. Ошибки: сумма выходов больше ордера — «Exits exceed the order by N shares» под списком и «Reduce exits to N shares» на кнопке; SL / TP не с той стороны — красным в строке и «Stop loss must be below entry» на кнопке. Сводка: «SL −407.00 USD · TP up to +818.00 USD · 3 exits», предупреждения оранжевым в конце («20 shares without SL/TP», «No stop loss»); если не влезает, сначала убирается «N exits». R:R в сводку не выводится. Движок создаёт на каждый уровень свою пару TP + SL.
 
-### FR-7. Time in force и Extra settings
+### FR-7. Expires и Extra settings
 
-- FR-7.1. Строка Time in force показывает название и дату: «Week · Oct 15». Варианты: Day, Week, Month, GTD. GTC в системе нет. По умолчанию Week.
+- FR-7.1. Строка «Expires» (было «Expires») показывает только дату: «Oct 15»; Day — «Today, 4:00 PM»; GTD — «Oct 24, 4:00 PM». Меню: слева название, справа серым дата — Day (Today, 4:00 PM), Week (Oct 15, по умолчанию), Month (Nov 8), On date (GTD) («Pick a date», после выбора «Oct 24, 4:00 PM»). Даты считаются от момента выставления: Week = +7 дней, Month = +1 месяц. Время Day и GTD по умолчанию — закрытие сессии (AAPL 4:00 PM). On date открывает календарь и список времени (шаг 15 минут, можно ввести вручную), минимум — завтра; пока дата не выбрана, Limit / Stop неактивны («Pick an expiry date»). GTC в системе нет.
 - FR-7.2. Extra settings — свёрнутая строка. Раздел обязателен по бизнес-причинам.
 
 ### FR-8. Сводка и кнопка
 
 - FR-8.1. Над кнопкой — сводка денег по выходам: «SL −407.00 USD · TP +943.00 USD». Без SL/TP сводки нет.
 - FR-8.2. Кнопка в две строки. Первая — сторона (Buy / Sell). Вторая — ордер.
-- FR-8.3. Market: «100 AAPL · MKT». Срок не показываем — строка Time in force видна без скролла.
+- FR-8.3. Market: «100 AAPL · MKT». Срок не показываем. Limit / Stop: «· till Oct 15» (Day — «· till 4:00 PM», GTD — «· till Oct 24»).
 - FR-8.4. Limit: «100 AAPL · LMT 199.00 · till Oct 15». Для Limit срок важен: ордер молча сгорает.
 - FR-8.5. Неактивная кнопка: первая строка Buy / Sell, вторая — причина: «Enter quantity to buy AAPL», «Enter price and quantity», «Stop loss must be below entry», «Take profit must be above entry», «Set stop loss to calculate size», «Not enough margin». Для Sell знаки и стороны зеркальные.
 - FR-8.6. Сводка и кнопка закреплены внизу панели и не скроллятся.
@@ -405,7 +405,7 @@ type Quote = { symbol: string; bid: number; ask: number; last: number; ts: numbe
 - Поле количества с дропдауном единиц как в проде (Units / Shares, Margin, % balance, Risk USD, Risk %) и пересчётом.
 - Exits: Take profit и Stop loss с чекбоксами, единицами (price, ticks, %, USD) и подсказками.
 - Order info: Trade value, Available margin, Pip / Tick value и т. д.
-- Extra settings: Time in force (Day, Week, Month, GTD; по умолчанию Week).
+- Extra settings: Expires (Day, Week, Month, GTD; по умолчанию Week).
 - Кнопка вида «Buy 100 AAPL MKT».
 
 Если поведение в слепке и в проде расходится — бери слепок и запиши расхождение в `NOTES.md`.
@@ -491,7 +491,7 @@ type Quote = { symbol: string; bid: number; ask: number; last: number; ts: numbe
 | `FieldCaption` — подпись под полем | neutral, error, warning |
 | `ExitLevel` — лейбл-меню + тумблер + `ValueField` + подпись | off, on, error |
 | `InfoRow` — «Risk / Reward 1 : 2.32» | — |
-| `SettingsRow` — строка с значением и шевроном (Time in force, Extra settings) | collapsed, expanded |
+| `SettingsRow` — строка с значением и шевроном (Expires, Extra settings) | collapsed, expanded |
 | `OrderSummary` — «SL −407.00 USD · TP +943.00 USD» | hidden, one exit, two exits |
 | `SubmitButton` — две строки, Buy синий / Sell красный | enabled, disabled с причиной, loading |
 
@@ -506,7 +506,7 @@ type Quote = { symbol: string; bid: number; ask: number; last: number; ts: numbe
 3. `UnderlineTabs`: Market активен.
 4. Quantity.
 5. Exits: заголовок с шевроном, Stop loss, Take profit, Risk / Reward, «+ Add partial exit».
-6. Time in force: «Week · Oct 15». Дата = сегодня + 7 дней, от текущей даты.
+6. Expires: «Week · Oct 15». Дата = сегодня + 7 дней, от текущей даты.
 7. Extra settings: свёрнута.
 8. Закреплено внизу: `OrderSummary` + `SubmitButton`.
 
@@ -600,7 +600,7 @@ type Quote = { symbol: string; bid: number; ask: number; last: number; ts: numbe
 
 ## Не делать в 2a
 
-Limit, Stop, Risk-режимы Quantity, частичные выходы (экран Exit levels), линии на графике, баннер «рынок закрыт», выбор срока (строка Time in force видна, но не раскрывается).
+Limit, Stop, Risk-режимы Quantity, частичные выходы (экран Exit levels), линии на графике, баннер «рынок закрыт», выбор срока (строка Expires видна, но не раскрывается).
 ```
 
 ## Приложение C. Промпт для Claude Code: Limit, Stop, risk-first и тест (2b)
@@ -662,7 +662,7 @@ Limit, Stop, Risk-режимы Quantity, частичные выходы (экр
 - При смене режима Quantity количество акций сохраняется, значение пересчитывается в новую единицу. Сам ордер при этом не меняется.
 - На Market Risk-режимы тоже работают. Вход плавает, поэтому количество может меняться на тиках. Не дёргай число чаще одного раза в 500 мс.
 
-## Блок 4. Time in force
+## Блок 4. Expires
 
 - Строка раскрывается в меню: Day, Week, Month, GTD. GTC нет. По умолчанию Week.
 - Каждый пункт показывает дату окончания: «Week · till Oct 15».

@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ChevronDown, ChevronRight, ChevronUp, Clock3, Info, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeftRight, Calendar, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Info, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { parseNum } from '../../../lib/format';
 import type { Side } from '../../../lib/orderMath';
@@ -453,10 +453,200 @@ export function Banner({ children, testId }: { children: ReactNode; testId?: str
   );
 }
 
-/**
- * New atom: GTD date + time. ValueField is a numeric value/suffix/right-value control and cannot host
- * native date and time pickers with a min date.
- */
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const ymdOf = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+
+/** A text input with an icon button on the right; the box takes the focus ring while typing or while its layer is open. */
+function PickField({
+  anchor,
+  open,
+  icon,
+  iconLabel,
+  onToggle,
+  children,
+}: {
+  anchor: React.RefObject<HTMLDivElement | null>;
+  open: boolean;
+  icon: ReactNode;
+  iconLabel: string;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div ref={anchor} className={cx(s.pickField, open && s.pickFieldOpen)}>
+      {children}
+      <button type="button" className={s.pickIcon} aria-label={iconLabel} onMouseDown={(e) => e.preventDefault()} onClick={onToggle}>
+        {icon}
+      </button>
+    </div>
+  );
+}
+
+/** "2026-10-24" with a calendar: month arrows, Mo–Su, today underlined, the chosen day dark, days before `minDate` off. */
+function DateField({ date, minDate, onChange }: { date: string; minDate: string; onChange: (date: string) => void }) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const base = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : minDate;
+  const [view, setView] = useState(() => ({ y: Number(base.slice(0, 4)), m: Number(base.slice(5, 7)) - 1 }));
+  const today = new Date();
+  const todayKey = ymdOf(today.getFullYear(), today.getMonth(), today.getDate());
+  // Monday-first grid of the viewed month.
+  const first = new Date(view.y, view.m, 1);
+  const lead = (first.getDay() + 6) % 7;
+  const days = new Date(view.y, view.m + 1, 0).getDate();
+  const cells = [...Array<null>(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+  const step = (d: number) => setView((v) => ({ y: v.y + Math.floor((v.m + d) / 12), m: (((v.m + d) % 12) + 12) % 12 }));
+  const commit = (value: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value) && value >= minDate && !Number.isNaN(Date.parse(value))) onChange(value);
+  };
+  return (
+    <>
+      <PickField
+        anchor={anchor}
+        open={open}
+        icon={<Calendar size={18} strokeWidth={1.3} />}
+        iconLabel="Open calendar"
+        onToggle={() => setOpen((v) => !v)}
+      >
+        <input
+          className={s.pickInput}
+          value={draft ?? date}
+          placeholder="YYYY-MM-DD"
+          inputMode="numeric"
+          aria-label="Good till date"
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            commit(e.target.value);
+          }}
+          onBlur={() => setDraft(null)}
+          onKeyDown={(e) => e.key === 'Enter' && setOpen(false)}
+          data-testid="nt-gtd-date"
+        />
+      </PickField>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)}>
+        <div className={s.calendar} data-testid="nt-calendar">
+          <div className={s.calHead}>
+            <button type="button" className={s.calNav} aria-label="Previous month" onClick={() => step(-1)}>
+              <ChevronLeft size={18} strokeWidth={1.5} />
+            </button>
+            <span className={s.calTitle}>
+              {MONTHS[view.m]} {view.y}
+            </span>
+            <button type="button" className={s.calNav} aria-label="Next month" onClick={() => step(1)}>
+              <ChevronRight size={18} strokeWidth={1.5} />
+            </button>
+          </div>
+          <div className={s.calGrid}>
+            {WEEKDAYS.map((w) => (
+              <span key={w} className={s.calWeekday}>
+                {w}
+              </span>
+            ))}
+            {cells.map((d, i) => {
+              if (d === null) return <span key={`e${i}`} />;
+              const key = ymdOf(view.y, view.m, d);
+              const off = key < minDate;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={off}
+                  className={cx(s.calDay, key === date && s.calDaySelected, key === todayKey && s.calDayToday)}
+                  onClick={() => {
+                    onChange(key);
+                    setOpen(false);
+                  }}
+                  data-testid={`nt-cal-${key}`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+/** Quarter-hour slots of a day plus the current value. */
+function timeSlots(current: string): string[] {
+  const slots = Array.from({ length: 96 }, (_, i) => `${pad2(Math.floor(i / 4))}:${pad2((i % 4) * 15)}`);
+  return /^\d{2}:\d{2}$/.test(current) && !slots.includes(current) ? [...slots, current].sort() : slots;
+}
+
+/** "18:02" with a list of quarter-hour times (the chosen one dark); the text can be typed too. */
+function TimeField({ time, onChange }: { time: string; onChange: (time: string) => void }) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (open) activeRef.current?.scrollIntoView({ block: 'start' });
+  }, [open]);
+  const commit = (value: string) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+    if (m && Number(m[1]) < 24 && Number(m[2]) < 60) onChange(`${pad2(Number(m[1]))}:${m[2]}`);
+  };
+  return (
+    <>
+      <PickField
+        anchor={anchor}
+        open={open}
+        icon={<Clock3 size={18} strokeWidth={1.3} />}
+        iconLabel="Open times"
+        onToggle={() => setOpen((v) => !v)}
+      >
+        <input
+          className={s.pickInput}
+          value={draft ?? time}
+          placeholder="HH:MM"
+          inputMode="numeric"
+          aria-label="Good till time"
+          onFocus={(e) => {
+            setOpen(true);
+            e.currentTarget.select();
+          }}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            commit(e.target.value);
+          }}
+          onBlur={() => setDraft(null)}
+          onKeyDown={(e) => e.key === 'Enter' && setOpen(false)}
+          data-testid="nt-gtd-time"
+        />
+      </PickField>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} matchWidth align="end">
+        <div className={s.timeList} role="listbox" data-testid="nt-time-list">
+          {timeSlots(time).map((t) => (
+            <button
+              key={t}
+              ref={t === time ? activeRef : undefined}
+              type="button"
+              role="option"
+              aria-selected={t === time}
+              className={cx(s.timeItem, t === time && s.timeItemActive)}
+              onClick={() => {
+                onChange(t);
+                setOpen(false);
+              }}
+              data-testid={`nt-time-${t}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+/** GTD date + time: a calendar and a list of times in the style of the platform (minimum date: tomorrow). */
 export function DateTimeField({
   date,
   time,
@@ -470,23 +660,8 @@ export function DateTimeField({
 }) {
   return (
     <div className={s.dateTime}>
-      <input
-        type="date"
-        className={s.dateInput}
-        value={date}
-        min={minDate}
-        onChange={(e) => onChange(e.target.value, time)}
-        aria-label="Good till date"
-        data-testid="nt-gtd-date"
-      />
-      <input
-        type="time"
-        className={cx(s.dateInput, s.timeInput)}
-        value={time}
-        onChange={(e) => onChange(date, e.target.value)}
-        aria-label="Good till time"
-        data-testid="nt-gtd-time"
-      />
+      <DateField date={date} minDate={minDate} onChange={(d) => onChange(d, time)} />
+      <TimeField time={time} onChange={(tm) => onChange(date, tm)} />
     </div>
   );
 }
@@ -581,7 +756,7 @@ export function InfoRow({ label, value }: { label: string; value: string }) {
 type SettingsRowProps = {
   title: string;
   value?: string;
-  /** right = navigates (Time in force), down/up = collapsible section. */
+  /** right = navigates (Expires), down/up = collapsible section. */
   chevron: 'right' | 'down' | 'up';
   onClick?: () => void;
   testId?: string;

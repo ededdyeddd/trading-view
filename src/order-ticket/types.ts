@@ -136,6 +136,7 @@ export type DisabledReason =
   | 'invalid-price'
   | 'invalid-exit'
   | 'below-min-qty'
+  | 'pick-date'
   | 'risk-below-one'
   | 'not-enough-margin';
 

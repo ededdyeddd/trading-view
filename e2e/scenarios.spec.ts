@@ -407,3 +407,52 @@ test.describe('new · exits: levels, Protected size, summary (frozen AAPL 201.56
     await expect(page.getByTestId('nt-submit')).toContainText('Stop loss must be below entry');
   });
 });
+
+test.describe('new · Expires (frozen AAPL)', () => {
+  async function openFrozen(page: Page) {
+    await page.goto('/?panel=new&freeze=1');
+    await page.evaluate(() => localStorage.clear());
+    await page.goto('/?panel=new&freeze=1');
+    await expect(page.getByTestId('order-panel')).toHaveAttribute('data-variant', 'new');
+  }
+  const ymd = (offsetDays: number) =>
+    new Date(Date.now() + offsetDays * 86_400_000).toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+
+  test('row says "Expires" with the date only; the menu lists Day / Week / Month / On date with dates on the right', async ({ page }) => {
+    await openFrozen(page);
+    const row = page.getByTestId('nt-tif');
+    await expect(row).toContainText('Expires');
+    await expect(row).not.toContainText('Week');
+    await expect(row).toContainText(/[A-Z][a-z]{2} \d{1,2}$/);
+    await row.click();
+    const items = page.getByRole('menuitem');
+    await expect(items.nth(0)).toContainText('Day');
+    await expect(items.nth(0)).toContainText('Today, 4:00 PM');
+    await expect(items.nth(1)).toContainText('Week');
+    await expect(items.nth(2)).toContainText('Month');
+    await expect(items.nth(3)).toContainText('On date (GTD)');
+    await expect(items.nth(3)).toContainText('Pick a date');
+    await items.nth(0).click();
+    await expect(row).toContainText('Today, 4:00 PM');
+  });
+
+  test('On date: calendar (past days off, min tomorrow) and a list of times; the button shows the date', async ({ page }) => {
+    await openFrozen(page);
+    await page.getByTestId('nt-price').fill('199');
+    await page.getByTestId('nt-qty').fill('10');
+    await page.getByTestId('nt-tif').click();
+    await page.getByTestId('nt-tif-gtd').click();
+    await expect(page.getByTestId('nt-tif')).toContainText('Pick a date');
+    await expect(page.getByTestId('nt-submit')).toContainText('Pick an expiry date');
+    await page.getByTestId('nt-gtd-date').click();
+    await expect(page.getByTestId('nt-calendar')).toBeVisible();
+    await expect(page.getByTestId(`nt-cal-${ymd(0)}`)).toBeDisabled(); // today is before the minimum (tomorrow)
+    await page.getByTestId(`nt-cal-${ymd(2)}`).click();
+    await expect(page.getByTestId('nt-gtd-date')).toHaveValue(ymd(2));
+    await page.getByTestId('nt-gtd-time').click();
+    await page.getByTestId('nt-time-17:15').click();
+    await expect(page.getByTestId('nt-gtd-time')).toHaveValue('17:15');
+    await expect(page.getByTestId('nt-tif')).toContainText(', 5:15 PM');
+    await expect(page.getByTestId('nt-submit')).toContainText(/· till [A-Z][a-z]{2} \d{1,2}$/); // the date only
+  });
+});

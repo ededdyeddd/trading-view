@@ -5,6 +5,7 @@
 import { pricePrecision, qtyPrecision, type SymbolSpec } from '../../config/symbols';
 import { computeExpiry } from '../../engine/paperEngine';
 import type { TimeInForce } from '../../engine/types';
+import { sessionCloseTime } from '../../market/session';
 import { fmtMoney, fmtNumber, fmtPrice, fmtQty, offsetInput, parseNum } from '../../lib/format';
 import { ceilTo, convertRisk, defaultRiskInput, marketRef, type ExitKind, type ExitLevel, type ExitUnit, type OrderType, type QtyUnit, type Side } from '../../lib/orderMath';
 import type { Quote } from '../../market/types';
@@ -524,9 +525,9 @@ export type SubmitText = { primary: string; secondary: string; disabled: boolean
 
 const TYPE_SHORT = { market: 'MKT', limit: 'LMT', stop: 'STP' } as const;
 
-/** "till Oct 15" (date) or "till Oct 20 14:30" (GTD with a time). */
-export function tillText(state: TicketState, expiresAt: number): string {
-  return state.tif === 'gtd' && state.gtdTime ? `till ${shortDate(expiresAt)} ${hhmm(expiresAt)}` : `till ${shortDate(expiresAt)}`;
+/** "till Oct 15"; Day — "till 4:00 PM" (the session close); GTD — "till Oct 24" (date only). Market has none. */
+export function tillText(state: TicketState, expiresAt: number, spec: SymbolSpec): string {
+  return state.tif === 'day' ? `till ${closeLabel(spec)}` : `till ${shortDate(expiresAt)}`;
 }
 
 export function submitText(state: TicketState, view: TicketView, spec: SymbolSpec): SubmitText {
@@ -553,37 +554,59 @@ export function submitText(state: TicketState, view: TicketView, spec: SymbolSpe
   const qty = `${fmtQty(view.qty.units, spec)} ${spec.symbol}`;
   if (state.type === 'market') return { primary, secondary: `${qty} · MKT${view.opensAt !== null ? ' · at open' : ''}`, disabled: false, reason: null };
   const px = fmtPrice(view.price!.value!, spec, { grouping: false });
-  const till = view.expiresAt !== null ? ` · ${tillText(state, view.expiresAt)}` : '';
+  const till = view.expiresAt !== null ? ` · ${tillText(state, view.expiresAt, spec)}` : '';
   return { primary, secondary: `${qty} · ${TYPE_SHORT[state.type]} ${px}${till}`, disabled: false, reason: null };
 }
 
-const TIF_LABEL: Record<TimeInForce, string> = { day: 'Day', week: 'Week', month: 'Month', gtd: 'GTD' };
+const TIF_LABEL: Record<TimeInForce, string> = { day: 'Day', week: 'Week', month: 'Month', gtd: 'On date (GTD)' };
 export const TIFS: TimeInForce[] = ['day', 'week', 'month', 'gtd'];
 
-function gtdMs(state: Pick<TicketState, 'gtdDate' | 'gtdTime'>): number | undefined {
-  return state.gtdDate ? new Date(`${state.gtdDate}T${state.gtdTime || '00:00'}:00`).getTime() : undefined;
+/** "4:00 PM" from "16:00". */
+function clock12(hhmmText: string): string {
+  const [h, m] = hhmmText.split(':').map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-/** Row value: "Week · Oct 16" (computed from today, also for market orders). */
-export function tifText(tif: TimeInForce, now: number, gtd?: number): string {
-  const expiry = computeExpiry(tif, now, gtd);
-  return `${TIF_LABEL[tif]} · ${shortDate(expiry)}`;
+/** The session close as shown: "4:00 PM" (stocks); 24 h markets expire at the end of the day, "11:59 PM". */
+export function closeLabel(spec: SymbolSpec): string {
+  return clock12(sessionCloseTime(spec.symbol) || '23:59');
 }
 
-export function tifRowText(state: TicketState, now: number): string {
-  if (state.tif === 'gtd' && !state.gtdDate) return 'GTD';
-  const g = gtdMs(state);
-  const base = tifText(state.tif, now, g);
-  return state.tif === 'gtd' && state.gtdTime && g ? `${base} ${hhmm(g)}` : base;
+/** GTD time as typed, or the default close. */
+export function gtdTimeOrClose(state: Pick<TicketState, 'gtdTime'>, spec: SymbolSpec): string {
+  return state.gtdTime || sessionCloseTime(spec.symbol) || '23:59';
 }
 
-/** Menu item: "Week · till Oct 16"; GTD without a date yet: "GTD · pick a date". */
-export function tifMenuText(tif: TimeInForce, now: number, state: TicketState): string {
-  if (tif === 'gtd') {
-    const g = gtdMs(state);
-    return g ? `GTD · till ${shortDate(computeExpiry('gtd', now, g))}${state.gtdTime ? ` ${state.gtdTime}` : ''}` : 'GTD · pick a date';
+function gtdMs(state: Pick<TicketState, 'gtdDate' | 'gtdTime'>, spec: SymbolSpec): number | undefined {
+  return state.gtdDate ? new Date(`${state.gtdDate}T${gtdTimeOrClose(state, spec)}:00`).getTime() : undefined;
+}
+
+/**
+ * The value of an Expires choice, on its own: "Today, 4:00 PM" (Day), "Oct 15" (Week), "Nov 8" (Month),
+ * "Oct 24, 4:00 PM" (GTD), "Pick a date" while no date is chosen. Dates count from `now`.
+ */
+export function expiresValue(tif: TimeInForce, now: number, state: Pick<TicketState, 'gtdDate' | 'gtdTime'>, spec: SymbolSpec): string {
+  switch (tif) {
+    case 'day':
+      return `Today, ${closeLabel(spec)}`;
+    case 'week':
+    case 'month':
+      return shortDate(computeExpiry(tif, now));
+    case 'gtd': {
+      const g = gtdMs(state, spec);
+      return g ? `${shortDate(g)}, ${clock12(gtdTimeOrClose(state, spec))}` : 'Pick a date';
+    }
   }
-  return `${TIF_LABEL[tif]} · till ${shortDate(computeExpiry(tif, now))}`;
+}
+
+/** Row value of the Expires row: the date only ("Oct 15"), no name of the choice. */
+export function expiresRowText(state: TicketState, now: number, spec: SymbolSpec): string {
+  return expiresValue(state.tif, now, state, spec);
+}
+
+/** Menu item: the name on the left, the date on the right (grey). */
+export function expiresMenuItem(tif: TimeInForce, now: number, state: TicketState, spec: SymbolSpec): { label: string; value: string } {
+  return { label: TIF_LABEL[tif], value: expiresValue(tif, now, state, spec) };
 }
 
 /** "Market is closed · opens Mon 15:30" in local time. */

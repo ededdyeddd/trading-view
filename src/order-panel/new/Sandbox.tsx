@@ -226,7 +226,7 @@ export function Sandbox() {
           <InfoRow label="Risk / Reward" value="1 : 2.32" />
         </Cell>
         <Cell title="SettingsRow">
-          <SettingsRow title="Time in force" value="Week · Oct 16" chevron="right" />
+          <SettingsRow title="Expires" value="Oct 16" chevron="right" />
           <div style={{ height: 20 }} />
           <SettingsRow title="Extra settings" chevron="down" onClick={noop} />
           <div style={{ height: 20 }} />

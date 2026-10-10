@@ -37,6 +37,7 @@ import {
   type ExitUnit,
   type ExitsLevel,
 } from '../lib/orderMath';
+import { sessionCloseTime } from '../market/session';
 import type { Quote } from '../market/types';
 import type { DisabledReason, ExitState, ExitView, LevelLegView, LevelView, QtyView, TicketState, TicketView } from './types';
 
@@ -60,10 +61,12 @@ export type TicketRules = {
   blockOnMargin: boolean;
   /** A stop already beyond the market is a warning ("Triggers now"), not a block (production blocks). */
   allowTriggeredStop: boolean;
+  /** Redesign: "On date" without a date blocks, and a date without a time expires at the session close (production: end of the day). */
+  expiresAtSessionClose: boolean;
 };
 
-export const CURRENT_RULES: TicketRules = { blockOnMargin: false, allowTriggeredStop: false };
-export const NEW_RULES: TicketRules = { blockOnMargin: true, allowTriggeredStop: true };
+export const CURRENT_RULES: TicketRules = { blockOnMargin: false, allowTriggeredStop: false, expiresAtSessionClose: false };
+export const NEW_RULES: TicketRules = { blockOnMargin: true, allowTriggeredStop: true, expiresAtSessionClose: true };
 
 export type TicketContext = {
   quote: Quote | undefined;
@@ -218,7 +221,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
       : null;
 
   // 4. Expiry and session -------------------------------------------------------
-  const gtdMs = state.gtdDate ? new Date(`${state.gtdDate}T${state.gtdTime || '00:00'}:00`).getTime() : undefined;
+  const gtdMs = state.gtdDate ? new Date(`${state.gtdDate}T${state.gtdTime || (rules.expiresAtSessionClose ? sessionCloseTime(state.symbol) : '') || '00:00'}:00`).getTime() : undefined;
   const expiresAt = state.type === 'market' ? null : computeExpiry(state.tif, now, gtdMs);
   const opensAt = ctx.opensAt ?? null;
 
@@ -232,6 +235,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   else if (qty.riskBelowOne) reason = 'risk-below-one';
   else if (!(units > 0)) reason = 'enter-quantity';
   else if (units < spec.minQty) reason = 'below-min-qty';
+  else if (rules.expiresAtSessionClose && state.type !== 'market' && state.tif === 'gtd' && !state.gtdDate) reason = 'pick-date';
   else if (price?.invalid && !rules.allowTriggeredStop) reason = 'invalid-price';
   else if (!multi && ((sl.enabled && (sl.error || !sl.level)) || (tp.enabled && (tp.error || !tp.level)))) reason = 'invalid-exit';
   else if (exitsError) reason = 'invalid-exit';
@@ -395,6 +399,8 @@ function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, 
       return 'Set stop loss to calculate size';
     case 'below-min-qty':
       return 'Quantity is below the minimum';
+    case 'pick-date':
+      return 'Pick an expiry date';
     case 'invalid-price':
       return "Selected price isn't valid for this order type";
     case 'invalid-exit':

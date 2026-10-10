@@ -434,10 +434,12 @@ export function sortLevelIndices(side: Side, tps: (number | null)[]): number[] {
     .map((x) => x.i);
 }
 
-/** New level after "+ Add partial exit": the last level's shares halved (rounded down, the rest stays), its SL, TP one step further. */
-export function nextLevel(last: ExitsLevel, prevTp: number | null, entry: number, qtyStep: number, tickSize: number): { newQty: number; lastQty: number; tp: number | null; sl: number | null } | null {
-  if (!(last.qty >= 2 * qtyStep - 1e-9)) return null;
-  const newQty = floorToStep(last.qty / 2, qtyStep);
+/**
+ * New level after "+ Add partial exit": the last level's shares halved (rounded down, the rest stays), its SL, TP one step
+ * further. A last level under 2 steps (1 share) is not split: the new level starts at 0 shares and the user sets them.
+ */
+export function nextLevel(last: ExitsLevel, prevTp: number | null, entry: number, qtyStep: number, tickSize: number): { newQty: number; lastQty: number; tp: number | null; sl: number | null } {
+  const newQty = last.qty >= 2 * qtyStep - 1e-9 ? floorToStep(last.qty / 2, qtyStep) : 0;
   const from = prevTp ?? entry;
   return { newQty, lastQty: Number((last.qty - newQty).toFixed(10)), tp: last.tp === null ? null : roundToTick(last.tp + (last.tp - from), tickSize), sl: last.sl };
 }

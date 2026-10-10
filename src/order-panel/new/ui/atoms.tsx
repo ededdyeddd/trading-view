@@ -209,6 +209,8 @@ type ValueFieldProps = {
   swap?: { label: string; onClick: () => void; testId?: string };
   /** The value may be negative (an offset from Ask / Bid): "−" is accepted and steps may cross zero. */
   signed?: boolean;
+  /** Focus the field when it appears, with its whole text selected (a level switched on by the user). */
+  focusOnMount?: boolean;
 };
 
 const MINUS = '−';
@@ -249,6 +251,7 @@ export function ValueField({
   onActivate,
   swap,
   signed,
+  focusOnMount,
 }: ValueFieldProps) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -261,6 +264,12 @@ export function ValueField({
       inputRef.current?.focus();
     }
   }, [disabled]);
+  useLayoutEffect(() => {
+    if (!focusOnMount) return;
+    selectOnFocus.current = true;
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // The level was switched on with its placeholder value: select it once the focused value is rendered.
   useLayoutEffect(() => {
     const el = inputRef.current;
@@ -686,6 +695,10 @@ export function Switch({ checked, onChange, label, testId }: { checked: boolean;
 
 type ExitLevelProps<T extends string> = {
   label: string;
+  /** Switched off: the field is this action text ("Set at 197.54"); without it a grey disabled field is drawn. */
+  offText?: string;
+  /** aria-label of the switched-off field: "Stop loss off. Activate to set at 197.54". */
+  offLabel?: string;
   /** Extra field to the right of the value field (TP "% of position"). */
   aside?: ReactNode;
   unit: T;
@@ -701,6 +714,29 @@ type ExitLevelProps<T extends string> = {
 };
 
 /** Label menu + switch + ValueField + caption. Off = grey field with a placeholder (numeric when the field passes `placeholderStyle: 'value'`). */
+/** The field of a switched-off level: grey action text instead of a value. Click, Space or Enter turns the level on. */
+function ActionField({ text, ariaLabel, onActivate, testId }: { text: string; ariaLabel: string; onActivate: () => void; testId?: string }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      className={cx(s.field, s.fieldAction)}
+      // mousedown would move the focus onto the field just before it is replaced by the input
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onActivate}
+      onKeyDown={(e) => {
+        if (e.key !== ' ' && e.key !== 'Enter') return;
+        e.preventDefault();
+        onActivate();
+      }}
+      data-testid={testId}
+    >
+      <span className={s.fieldActionText}>{text}</span>
+    </div>
+  );
+}
+
 export function ExitLevel<T extends string>({
   label,
   unit,
@@ -714,22 +750,34 @@ export function ExitLevel<T extends string>({
   captionTone,
   testId,
   aside,
+  offText,
+  offLabel,
 }: ExitLevelProps<T>) {
+  // A level the user turns on gets the focus in its field, text selected (the panel turning it on itself does not).
+  const [focusNext, setFocusNext] = useState(false);
+  if (!enabled && focusNext) setFocusNext(false);
+  const turnOn = () => {
+    setFocusNext(true);
+    onToggle(true);
+  };
+  const input = <ValueField placeholderStyle="text" {...field} disabled={!enabled} focusOnMount={focusNext} onActivate={() => onToggle(true)} />;
+  const action =
+    offText !== undefined && !enabled ? (
+      <ActionField text={offText} ariaLabel={offLabel ?? title} onActivate={turnOn} testId={field.testId} />
+    ) : null;
   return (
     <div data-testid={testId}>
       <div className={s.exitHeader}>
         <FieldLabelMenu label={label} value={unit} options={units} onChange={onUnit} testId={`${testId}-unit`} />
-        <Switch checked={enabled} onChange={onToggle} label={title} testId={`${testId}-toggle`} />
+        <Switch checked={enabled} onChange={(v) => (v ? turnOn() : onToggle(false))} label={title} testId={`${testId}-toggle`} />
       </div>
       {aside ? (
         <div className={s.dateTime}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <ValueField placeholderStyle="text" {...field} disabled={!enabled} onActivate={() => onToggle(true)} />
-          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>{action ?? input}</div>
           {aside}
         </div>
       ) : (
-        <ValueField placeholderStyle="text" {...field} disabled={!enabled} onActivate={() => onToggle(true)} />
+        (action ?? input)
       )}
       {enabled && caption && (
         <FieldCaption tone={captionTone} testId={`${testId}-caption`}>

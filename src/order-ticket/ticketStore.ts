@@ -212,13 +212,17 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
       ? [{ frac: 1, tp: { unit: s.tp.unit, input: s.tp.enabled ? view.tp.input : '' }, sl: { unit: s.sl.unit, input: s.sl.enabled ? view.sl.input : '' } }]
       : s.levels;
     const qtys = single ? [units] : view.levels.map((l) => l.qty);
-    const tps = single ? [view.tp.enabled && view.tp.level && !view.tp.level.invalid ? view.tp.level.price : null] : view.levels.map((l) => (l.tp.level && !l.tp.level.invalid ? l.tp.level.price : null));
-    const sls = single ? [view.sl.enabled && view.sl.level && !view.sl.level.invalid ? view.sl.level.price : null] : view.levels.map((l) => (l.sl.level && !l.sl.level.invalid ? l.sl.level.price : null));
+    // Without a typed limit / stop price the fields' levels count from the price placeholder (placeholderLevel), like the rows.
+    const fieldPrice = (ex: TicketView['sl']) => {
+      const lvl = ex.enabled ? (ex.level ?? ex.placeholderLevel) : null;
+      return lvl && !lvl.invalid ? lvl.price : null;
+    };
+    const tps = single ? [fieldPrice(view.tp)] : view.levels.map((l) => (l.tp.level && !l.tp.level.invalid ? l.tp.level.price : null));
+    const sls = single ? [fieldPrice(view.sl)] : view.levels.map((l) => (l.sl.level && !l.sl.level.invalid ? l.sl.level.price : null));
     const order = single ? [0] : view.levelOrder;
     const lastI = order[order.length - 1];
     const prevTp = order.length > 1 ? tps[order[order.length - 2]] : null;
     const next = nextLevel({ qty: qtys[lastI], tp: tps[lastI], sl: sls[lastI] }, prevTp, entry, spec.qtyStep, spec.tickSize);
-    if (!next) return null;
     const levels = base.map((l, i) => (i === lastI ? { ...l, frac: next.lastQty / units } : l));
     // The new level's legs are prices (SL copied from the last level; TP one step further).
     levels.push({ frac: next.newQty / units, tp: { unit: 'price', input: price(next.tp) }, sl: { unit: 'price', input: price(next.sl) } });

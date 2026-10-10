@@ -276,6 +276,6 @@ describe('partial exits: summary, scaling, adding a level (spec examples, Buy 10
     // no TP on the last level → none on the new one
     expect(nextLevel({ qty: 10, tp: null, sl: 197.5 }, null, E, 1, 0.01)?.tp).toBeNull();
     // fewer than 2 steps cannot be split
-    expect(nextLevel({ qty: 1, tp: 211, sl: null }, null, E, 1, 0.01)).toBeNull();
+    expect(nextLevel({ qty: 1, tp: 211, sl: null }, null, E, 1, 0.01)).toEqual({ newQty: 0, lastQty: 1, tp: 220.43, sl: null });
   });
 });

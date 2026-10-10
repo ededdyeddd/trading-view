@@ -23,6 +23,8 @@ import {
   exitUnitBlocked,
   exitUnitsFor,
   exitDecimals,
+  exitOffAriaLabel,
+  exitOffText,
   exitUnitInfo,
   exitUnitLabel,
   fillToastText,
@@ -119,15 +121,20 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     setLevelsSnapshot(state.levels);
     setEditing(index);
   };
-  /** "+ Add partial exit": splits the last level and opens the editor of the new one. */
+  /**
+   * "+ Add partial exit": splits the last level and opens the editor of the new one (a 1-share level is not split: the new
+   * exit starts at 0 shares). Without a quantity there are no shares to give: focus Quantity instead.
+   */
   const addExit = () => {
+    if (!(view.qty.units > 0)) {
+      (document.querySelector('[data-testid=nt-qty]') as HTMLInputElement | null)?.focus();
+      return;
+    }
     setLevelsSnapshot(state.levels);
     const index = t.addLevel(view);
     if (index !== null) setEditing(index);
   };
-  // The last level in the list (single level: the whole order) must hold at least 2 steps to be split.
-  const lastQty = state.levels.length ? view.levels[view.levelOrder[view.levelOrder.length - 1]]?.qty : view.qty.units;
-  const canSplit = (lastQty ?? 0) >= 2 * spec.qtyStep - 1e-9 && view.levelEntry !== null && state.levels.length < MAX_LEVELS;
+  const atMaxLevels = state.levels.length >= MAX_LEVELS;
 
   const doSubmit = () => {
     if (submit.disabled || !view.draft) {
@@ -213,6 +220,8 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
         }))}
         onUnit={(u) => t.setExitUnit(kind, u, view)}
         enabled={ex.enabled}
+        offText={exitOffText(kind, slowView, spec)}
+        offLabel={exitOffAriaLabel(kind, slowView, spec)}
         onToggle={(v) => t.setExitEnabled(kind, v, slowView)}
         field={{
           value: ex.enabled ? ex.input : '',
@@ -401,7 +410,8 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                   )}
                   {((state.sl.enabled && state.tp.enabled) || state.levels.length > 0) && (
                     <div className={`${styles.addLevel} ${state.levels.length > 0 ? styles.addLevelAfterLevels : view.riskReward === null ? styles.addLevelAlone : ''}`}>
-                      <TextButton onClick={addExit} disabled={!canSplit} disabledReason="Not enough shares to split" testId="nt-partial-exit">
+                      <TextButton onClick={addExit} disabled={atMaxLevels || view.levelEntry === null}
+                        disabledReason={atMaxLevels ? `Up to ${MAX_LEVELS} exits` : 'Waiting for market data'} testId="nt-partial-exit">
                         Add partial exit
                       </TextButton>
                     </div>

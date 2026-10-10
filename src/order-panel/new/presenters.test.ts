@@ -9,6 +9,8 @@ import {
   DASH,
   exitDecimals,
   exitMenuValue,
+  exitOffAriaLabel,
+  exitOffText,
   exitText,
   exitUnitBlocked,
   exitUnitsFor,
@@ -678,39 +680,61 @@ describe('Live placeholders', () => {
   });
 });
 
-describe('Switched-off SL / TP: numeric placeholder (FR-6.3)', () => {
+describe('Switched-off SL / TP: "Set at {value}" (FR-6.3)', () => {
   const nctx: TicketContext = { ...ctx, rules: NEW_RULES };
+  /** [SL text, SL right, TP text, TP right] */
   const offView = (s: TicketState) => {
     const v = deriveTicket(s, nctx);
-    return [v.sl.placeholder, exitText('sl', s, v, AAPL).right, v.tp.placeholder, exitText('tp', s, v, AAPL).right];
+    return [exitOffText('sl', v, AAPL), exitText('sl', s, v, AAPL).right, exitOffText('tp', v, AAPL), exitText('tp', s, v, AAPL).right];
   };
-  it('Market Buy, Ask 201.57, 100 sh: SL 197.54 / −403.00 USD, TP 209.63 / +806.00 USD', () => {
-    expect(offView(st({ qtyInput: '100' }))).toEqual(['197.54', '−403.00 USD', '209.63', '+806.00 USD']);
+  it('Market Buy, Ask 201.57, 100 sh: Set at 197.54 / Set at 209.63, nothing on the right (no money)', () => {
+    expect(offView(st({ qtyInput: '100' }))).toEqual(['Set at 197.54', '', 'Set at 209.63', '']);
   });
-  it('Limit 199.00: SL 195.02 / −398.00 USD, TP 206.96 / +796.00 USD', () => {
-    expect(offView(st({ type: 'limit', priceInput: '199.00', qtyInput: '100' }))).toEqual(['195.02', '−398.00 USD', '206.96', '+796.00 USD']);
+  it('empty quantity: the same text, nothing on the right', () => {
+    expect(offView(st())).toEqual(['Set at 197.54', '', 'Set at 209.63', '']);
   });
-  it('limit without a price counts from the price placeholder (199.00); no quantity → no money', () => {
-    expect(offView(st({ type: 'limit' }))).toEqual(['195.02', '', '206.96', '']);
+  it('Market Sell, Bid 201.56: SL above, TP below', () => {
+    expect(offView(st({ side: 'sell', qtyInput: '100' }))).toEqual(['Set at 205.59', '', 'Set at 193.50', '']);
   });
-  it('Sell mirrors: SL above, TP below Bid 201.56', () => {
-    expect(offView(st({ side: 'sell', qtyInput: '100' }))).toEqual(['205.59', '−403.00 USD', '193.50', '+806.00 USD']);
+  it('Limit 199.00: 195.02 / 206.96, also from the price placeholder when the price is empty', () => {
+    expect(offView(st({ type: 'limit', priceInput: '199.00', qtyInput: '100' }))).toEqual(['Set at 195.02', '', 'Set at 206.96', '']);
+    expect(offView(st({ type: 'limit' }))).toEqual(['Set at 195.02', '', 'Set at 206.96', '']);
   });
-  it('placeholder in the current unit; grey, no caption, no R:R, not in the summary', () => {
+  it('a trigger / limit price of 205.20 (Stop; the panel has no Stop Limit): 201.10 / 213.41', () => {
+    expect(offView(st({ type: 'stop', priceInput: '205.20' }))).toEqual(['Set at 201.10', '', 'Set at 213.41', '']);
+  });
+  it.each<[ExitUnit, string]>([
+    ['price', 'Set at 197.54'],
+    ['ticks', 'Set at 403'],
+    ['percent', 'Set at 2.00'],
+    ['money', 'Set at 403.00'],
+    ['balancePercent', 'Set at 0.40'],
+  ])('SL in %s', (unit, text) => {
+    const s = st({ qtyInput: '100', sl: { ...off, unit } });
+    expect(exitOffText('sl', deriveTicket(s, nctx), AAPL)).toBe(text);
+  });
+  it('TP in Price: Set at 209.63', () => {
+    expect(exitOffText('tp', deriveTicket(st({ qtyInput: '100' }), nctx), AAPL)).toBe('Set at 209.63');
+  });
+  it('the value is in the current unit; no caption, no R:R, not in the summary', () => {
     const s = st({ qtyInput: '100', sl: { ...off, unit: 'ticks' }, tp: { ...off, unit: 'percent' } });
     const v = deriveTicket(s, nctx);
     expect([v.sl.placeholder, v.tp.placeholder]).toEqual(['403', '4.00']);
-    expect(exitText('sl', s, v, AAPL)).toMatchObject({ right: '−403.00 USD', rightTone: 'muted', caption: null });
+    expect(exitText('sl', s, v, AAPL)).toMatchObject({ right: '', caption: null });
     expect([v.riskReward, summaryText(v, AAPL), v.draft?.stopLoss, v.draft?.takeProfit]).toEqual([null, null, undefined, undefined]);
   });
-  it('money units without quantity have no numeric placeholder', () => {
+  it('money units without quantity have no value: "Set at —"', () => {
     const s = st({ sl: { ...off, unit: 'money' } });
-    expect(deriveTicket(s, nctx).sl.placeholder).toBe('');
+    expect(exitOffText('sl', deriveTicket(s, nctx), AAPL)).toBe('Set at —');
   });
-  it('switched off after editing: the last value stays the placeholder', () => {
-    const s = st({ qtyInput: '100', sl: { ...off, input: '199.00' } });
+  it('switched off after editing: the last value (197.50) stays', () => {
+    const s = st({ qtyInput: '100', sl: { ...off, input: '197.50' } });
     const v = deriveTicket(s, nctx);
-    expect([v.sl.placeholder, exitText('sl', s, v, AAPL).right]).toEqual(['199.00', '−257.00 USD']);
+    expect([exitOffText('sl', v, AAPL), exitText('sl', s, v, AAPL).right]).toEqual(['Set at 197.50', '']);
+  });
+  it('aria-label of the field', () => {
+    expect(exitOffAriaLabel('sl', deriveTicket(st(), nctx), AAPL)).toBe('Stop loss off. Activate to set at 197.54');
+    expect(exitOffAriaLabel('tp', deriveTicket(st(), nctx), AAPL)).toBe('Take profit off. Activate to set at 209.63');
   });
 });
 

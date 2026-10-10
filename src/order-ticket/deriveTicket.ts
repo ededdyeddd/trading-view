@@ -197,15 +197,15 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   const protectedQty = multi ? Number(levelQtys.reduce((a, q) => a + q, 0).toFixed(10)) : units;
   const protectedPercent = units > 0 ? (protectedQty / units) * 100 : 0;
   // Problems in the exits, in the order the rows are shown: the first wrong side, else too many shares.
-  const unit = spec.qtyLabel.toLowerCase();
+  const unitWord = (n: number) => (n === 1 ? spec.qtyLabel.toLowerCase().replace(/s$/, '') : spec.qtyLabel.toLowerCase());
   const over = Number((protectedQty - units).toFixed(10));
   let exitsError: string | null = null;
   let exitsCaption: string | null = null;
   if (multi) {
     for (const i of levelOrder) exitsError ??= levels[i].sl.error ?? levels[i].tp.error;
     if (over > 1e-9) {
-      exitsCaption = `Exits exceed the order by ${fmtQty(over, spec)} ${unit}`;
-      exitsError = `Reduce exits to ${fmtQty(units, spec)} ${unit}`;
+      exitsCaption = `Exits exceed the order by ${fmtQty(over, spec)} ${unitWord(over)}`;
+      exitsError = `Reduce exits to ${fmtQty(units, spec)} ${unitWord(units)}`;
     }
   }
   // Summary over all levels (one level = the single SL / TP).

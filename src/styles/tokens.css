@@ -90,7 +90,8 @@
   --nt-fill-extra-light: #f2f2f2; /* color/container-fill/primary/neutral-extra-light */
   --nt-fill-thin: #f9f9f9; /* color/container-fill/primary/neutral-thin */
   --nt-fill-light: #ebebeb; /* color/container-fill/tertiary/neutral-light */
-  --nt-fill-neutral: #9c9c9c; /* color/container-fill/primary/neutral (switch off) */
+  --nt-fill-neutral: #9c9c9c; /* color/container-fill/primary/neutral */
+  --nt-switch-off: #dddddd; /* Figma 4135:159173: switch track, off */
   --nt-fill-extra-bold: #2e2e2e; /* color/container-fill/primary/neutral-extra-bold (switch on) */
   --nt-fill-hover: #ebebeb;
   --nt-accent: #2962ff; /* color/container-fill/primary/accent */

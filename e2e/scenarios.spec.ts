@@ -162,9 +162,8 @@ test('new · live placeholders: a click substitutes the grey value, selected, an
 
   // A switched-off SL shows its default (−2% from Ask); a click turns it on with that value selected.
   const sl = page.getByTestId('nt-sl-input');
-  const placeholder = await sl.getAttribute('placeholder');
-  expect(placeholder).toMatch(/^\d+\.\d{2}$/);
-  await sl.click({ force: true });
+  await expect(sl).toHaveText(/^Set at \d+\.\d{2}$/);
+  await sl.click();
   await expect(page.getByTestId('nt-sl-toggle')).toHaveAttribute('aria-checked', 'true');
   expect(await sl.evaluate((el: HTMLInputElement) => el.selectionEnd! - el.selectionStart! === el.value.length && el.value.length > 0)).toBe(true);
 
@@ -353,10 +352,13 @@ test.describe('new · exits: levels, Protected size, summary (frozen AAPL 201.56
     expect(orders.filter((o: [string, number, number]) => o[0] === 'sl' && o[2] === 197.54)).toHaveLength(2);
   });
 
-  test('not enough shares to split: the link is disabled with a tooltip', async ({ page }) => {
+  test('1 share: the link works; the new exit starts at 0 shares with the copied SL and the next TP', async ({ page }) => {
     await ready(page, '1');
-    await expect(page.getByTestId('nt-partial-exit')).toHaveAttribute('aria-disabled', 'true');
-    await expect(page.getByTestId('nt-partial-exit')).toHaveAttribute('title', 'Not enough shares to split');
+    await page.getByTestId('nt-partial-exit').click();
+    await expect(page.getByLabel('Exit 2 shares')).toHaveValue('0');
+    await expect(page.getByLabel('Exit 2 stop loss')).toHaveValue('197.54');
+    await page.getByLabel('Exit 2 shares').fill('1');
+    await expect(page.getByText('Exits exceed the order by 1 share', { exact: true })).toBeVisible();
   });
 
   test('deleting a level gives its shares to the neighbour; the last deletion brings the SL / TP fields back with that level\'s values', async ({ page }) => {
@@ -454,5 +456,96 @@ test.describe('new · Expires (frozen AAPL)', () => {
     await expect(page.getByTestId('nt-gtd-time')).toHaveValue('17:15');
     await expect(page.getByTestId('nt-tif')).toContainText(', 5:15 PM');
     await expect(page.getByTestId('nt-submit')).toContainText(/· till [A-Z][a-z]{2} \d{1,2}$/); // the date only
+  });
+});
+
+test('new · Add partial exit without a typed limit price copies SL and moves TP from the price placeholder', async ({ page }) => {
+  await page.goto('/?panel=new&freeze=1');
+  await page.evaluate(() => localStorage.clear());
+  await page.goto('/?panel=new&freeze=1');
+  await page.getByTestId('nt-sl-toggle').click();
+  await page.getByTestId('nt-tp-toggle').click();
+  await page.getByTestId('nt-qty').fill('100');
+  await page.getByTestId('nt-partial-exit').click();
+  // placeholder entry 199.00: SL 195.02 (−2%), TP 206.96 (+4%) → the new exit's TP one step further, 214.92
+  await expect(page.getByLabel('Exit 2 shares')).toHaveValue('50');
+  await expect(page.getByLabel('Exit 2 stop loss')).toHaveValue('195.02');
+  await expect(page.getByLabel('Exit 2 take profit')).toHaveValue('214.92');
+});
+
+test.describe('new · switched-off SL / TP read "Set at {value}" (FR-6.3, frozen AAPL 201.56 / 201.57)', () => {
+  async function openMarket(page: Page) {
+    await page.goto('/?panel=new&freeze=1');
+    await page.evaluate(() => localStorage.clear());
+    await page.goto('/?panel=new&freeze=1');
+    await page.getByTestId('nt-type-market').click();
+    await page.getByTestId('nt-qty').fill('100');
+  }
+  const sl = (page: Page) => page.getByTestId('nt-sl-input');
+  const tp = (page: Page) => page.getByTestId('nt-tp-input');
+
+  test('1 · the fields read Set at 197.54 / Set at 209.63 with nothing on the right', async ({ page }) => {
+    await openMarket(page);
+    await expect(sl(page)).toHaveText('Set at 197.54');
+    await expect(tp(page)).toHaveText('Set at 209.63');
+    await expect(sl(page)).toHaveAttribute('aria-label', 'Stop loss off. Activate to set at 197.54');
+    await expect(page.getByTestId('nt-sl')).not.toContainText('USD');
+    await expect(page.getByTestId('nt-tp')).not.toContainText('USD');
+    await expect(page.getByTestId('nt-sl').locator('input, [data-testid$="-caption"]')).toHaveCount(0);
+  });
+
+  test('2 · hover: main text colour and a pointer', async ({ page }) => {
+    await openMarket(page);
+    const color = () => sl(page).evaluate((el) => getComputedStyle(el).color);
+    expect(await color()).toBe('rgb(112, 112, 112)');
+    await sl(page).hover();
+    expect(await color()).toBe('rgb(19, 23, 34)');
+    expect(await sl(page).evaluate((el) => getComputedStyle(el).cursor)).toBe('pointer');
+  });
+
+  test('3 · a click on the TP field turns it on: 209.63 selected, +806.00 USD on the right', async ({ page }) => {
+    await openMarket(page);
+    await tp(page).click();
+    await expect(page.getByTestId('nt-tp-toggle')).toHaveAttribute('aria-checked', 'true');
+    await expect(tp(page)).toHaveValue('209.63');
+    await expect(tp(page)).toBeFocused();
+    expect(await tp(page).evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 6]);
+    await expect(page.getByTestId('nt-tp')).toContainText('+806.00 USD');
+  });
+
+  test('4 · SL typed as 197.50 and switched off reads Set at 197.50', async ({ page }) => {
+    await openMarket(page);
+    await sl(page).click();
+    await page.keyboard.type('197.50');
+    await expect(page.getByTestId('nt-sl')).toContainText('−407.00 USD');
+    await page.getByTestId('nt-sl-toggle').click();
+    await expect(sl(page)).toHaveText('Set at 197.50');
+    await expect(page.getByTestId('nt-sl')).not.toContainText('USD');
+  });
+
+  test('5 · Buy → Sell recalculates the switched-off levels', async ({ page }) => {
+    await openMarket(page);
+    await page.getByTestId('nt-side-sell').click();
+    await expect(sl(page)).toHaveText('Set at 205.59');
+    await expect(tp(page)).toHaveText('Set at 193.50');
+  });
+
+  test('6 · keyboard only: Tab to the SL field, Space turns it on with the value selected, typing replaces it', async ({ page }) => {
+    await openMarket(page);
+    await page.getByTestId('nt-exits-toggle').focus();
+    // Exits → the unit menu → the switch → the field
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Tab');
+    await expect(sl(page)).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(page.getByTestId('nt-sl-toggle')).toHaveAttribute('aria-checked', 'true');
+    await expect(sl(page)).toBeFocused();
+    expect(await sl(page).evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, 6]);
+    await page.keyboard.type('197.50');
+    await expect(sl(page)).toHaveValue('197.50');
+  });
+
+  test('the switch off state is the Figma #ddd track', async ({ page }) => {
+    await openMarket(page);
+    expect(await page.getByTestId('nt-sl-toggle').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(221, 221, 221)');
   });
 });

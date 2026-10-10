@@ -353,12 +353,26 @@ export function levelText(kind: ExitKind, unit: ExitUnit, lvl: ExitLevel | null,
  */
 export function exitText(kind: ExitKind, state: TicketState, view: TicketView, spec: SymbolSpec): FieldText {
   const ex = view[kind];
-  if (!ex.enabled) {
-    const lvl = ex.placeholderLevel;
-    const t = lvl && !lvl.invalid ? levelText(kind, ex.unit, lvl, state.side, spec, view.qty.units > 0) : null;
-    return { suffix: '', right: t?.right ?? '', rightTone: 'muted', caption: null, captionTone: 'neutral' };
-  }
+  // Switched off: nothing on the right, not even money — the level reads as an action ("Set at …"), not as a filled field.
+  if (!ex.enabled) return { suffix: '', right: '', rightTone: 'neutral', caption: null, captionTone: 'neutral' };
   return levelText(kind, ex.unit, ex.level, state.side, spec, view.qty.units > 0);
+}
+
+/** The value a switched-off level gets, in its current unit and without a suffix ("197.54", "403"); '' when it cannot be computed. */
+export function exitOffValue(kind: ExitKind, view: TicketView, spec: SymbolSpec): string {
+  const ex = view[kind];
+  return ex.placeholder ? formatExitInput(ex.placeholder, ex.unit, spec) : '';
+}
+
+/** Text of a switched-off level's field (FR-6.3): "Set at 197.54". */
+export function exitOffText(kind: ExitKind, view: TicketView, spec: SymbolSpec): string {
+  return `Set at ${exitOffValue(kind, view, spec) || DASH}`;
+}
+
+/** "Stop loss off. Activate to set at 197.54" */
+export function exitOffAriaLabel(kind: ExitKind, view: TicketView, spec: SymbolSpec): string {
+  const v = exitOffValue(kind, view, spec);
+  return `${exitTitle(kind)} off. Activate to set${v ? ` at ${v}` : ''}`;
 }
 
 /** How the typed exit value reads when the field is not focused. */

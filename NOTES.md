@@ -249,7 +249,8 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - **Rows** on the panel are sorted by TP (nearest first), headed "Exit n · 50 shares · 50%"; a row opens the **level editor** (shares, TP, SL, "Remove exit"); "+ Add partial exit" splits the last level and opens the editor of the new one. This replaces the screen with Level 1 / Level 2 cards and the "Level 1 ∙ 50%" headings of Figma 4135:149017.
 - **Protected size** = Σ level shares / order (no longer "shares with an SL"); text "Protected size · 100%" (≤ 2 decimals, no trailing zeros).
 - **Removing** a level gives its shares to the previous row (the next one for the first); removing down to one level restores the SL / TP fields with that level's values. 0 shares in the editor removes the level on Confirm. Confirm is never disabled: problems show in the list and on the button.
-- **"Add partial exit" is disabled when the last level has fewer than 2 lot steps** ("Not enough shares to split") — also with 1 share and with no quantity. This reverses the earlier "available with 1 share, Level 2 starts empty".
+- ~~"Add partial exit" is disabled when the last level has fewer than 2 lot steps~~ — **reversed on 10 Oct at the user's request**: the link stays active. A last level under 2 steps (1 share) is not split; the new exit starts at **0 shares** with the copied SL and the next TP, and the user types its shares (above the order → "Exits exceed the order by 1 share"; confirming at 0 drops it). Without a quantity a click focuses Quantity (level shares are stored as fractions of the order, so they cannot exist without one). Disabled only at 5 exits ("Up to 5 exits").
+- Without a typed limit / stop price, the first split now takes SL / TP from the price placeholder (was "Off" / "Off").
 - **Summary** (pure `exitsSummary`): `SL −407.00 USD · TP up to +818.00 USD · 3 exits`, orange warnings `20 shares without SL/TP` / `No stop loss`, "N exits" dropped first when the line does not fit (at 320 px it often is), R:R not shown. The reason strings: `Reduce exits to 100 shares`, `Stop loss must be below entry`, `Take profit must be above entry`.
 - **Risk sizing** with levels uses the share-weighted average stop distance (levels without an SL do not count). Stop losses of levels cannot use Risk USD / Risk % balance while Quantity is in a risk mode (same as the single SL).
 - Up to 5 levels (`MAX_LEVELS`; the spec gives no limit). Chart lines: `SL1…` / `TP1…` per level, draggable.
@@ -268,3 +269,14 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - Expires: Day shows "Today, 5:00 PM" for forex (the rollover, **display only** — the engine is untouched; GTD without a time defaults to 17:00 local).
 - The spread is not converted to pips; the "Turn on stop loss to calculate units" caption does not exist any more (the button says "Set stop loss to calculate size"), so there is no such text to localise.
 - The price field's ⇆ offset stays in price ("Ask − 0.00020"), not pips — the prompt only covers SL / TP.
+
+## Switched-off SL / TP: "Set at {value}" (FR-6.3, 10 Oct)
+
+- The off field is a text action, not an `<input>` placeholder: `div role="button"` with `aria-label` "Stop loss off. Activate to set at 197.54", grey `#707070`, hover / keyboard focus `#131722` on the hover fill (`ExitLevel`, `ActionField` in `ui/atoms.tsx`). It keeps the test id `nt-sl-input` / `nt-tp-input`; once the level is on, the same id is the input. No money on the right and no caption when off, even with a quantity.
+- Money units without a quantity have no value: the text is "Set at —".
+- **Stop Limit** does not exist in this panel (Market / Limit / Stop only). The "Stop Limit 205.20 → 201.10 / 213.41" row is covered with a Stop at 205.20 (same entry maths).
+- **Quantity in Risk with SL turned off by the user:** the prompt says the caption "Turn on stop loss to calculate shares" exists "as now", but it never did (the earlier decision was no caption or link under the field; a test pins it). I left Quantity and the button as they are: "—" on the right, no caption, button "Set stop loss to calculate size" (disabled). Say if the caption should be added.
+- Focus: any user turn-on (field, switch, Space / Enter) focuses the input with the value selected; the panel turning SL on itself (FR-5.4) does not.
+- `?exitsRow=1` was not built in this branch, so there is nothing to keep for comparison.
+- Switch off state follows Figma 4135:159173: track `#ddd` (`--nt-switch-off`), 14 px dot with a `0 1px 1px rgba(0,0,0,.04)` shadow. Only the new panel; the on state and the `current` panel are unchanged.
+- `docs/PRD.md` FR-6.3 replaced with the current wording from the source document. Other places in the PRD (Appendix D tables with grey money for off levels) are left as history; the prompt of 10 Oct wins.

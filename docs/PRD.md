@@ -172,7 +172,7 @@ User stories:
 - FR-5.2. Ввод в Shares — справа стоимость позиции. Любой другой ввод — справа количество акций («1 share», «2 shares»).
 - FR-5.2a. Risk-режимы: `shares = floor(risk / |entry − SL| / pointValue)`. Смена SL, риска или входа (цена лимита / стопа, Ask или Bid у Market) пересчитывает только акции; риск и SL сами не меняются. Переход в Risk-режим ставит риск по умолчанию — 1% баланса (не из маржи и не из текущего объёма); между Risk USD и Risk % balance введённый риск пересчитывается.
 - FR-5.3. Подпись: пусто — «Available margin 99,953.90 USD»; заполнено — «Margin … · Tick …», в Risk-режимах так же. «Real risk» нигде не показываем.
-- FR-5.4. Выбор Risk USD / Risk % balance сам включает SL с его плейсхолдером (последнее значение, иначе −2% от входа). Если пользователь выключил SL в Risk-режиме: справа «—», подпись-ссылка «Turn on stop loss to calculate shares», кнопка «Set stop loss to calculate size».
+- FR-5.4. Выбор Risk USD / Risk % balance сам включает SL с его плейсхолдером (последнее значение, иначе −2% от входа). Если пользователь выключил SL в Risk-режиме: справа «—», подписи и ссылки под полем нет, кнопка «Set stop loss to calculate size».
 - FR-5.5. Акции округляются вниз до целого. Риск меньше одной акции: справа «0 shares», подпись «Risk too small for 1 share (min 4.07 USD)», кнопка неактивна с этой же причиной. Не хватает маржи: «Not enough margin for {shares} shares · max {maxShares}». На Market в Risk-режимах число акций обновляется не чаще раза в 500 мс.
 
 ### FR-6. Exits (Stop loss, Take profit)
@@ -272,7 +272,7 @@ User stories:
 | Buy Limit выше Ask | Поле цены | «Ask + 0.07» оранжевым, «Fills now: price is above Ask» | нет |
 | SL не с той стороны | Поле SL, кнопка | «Stop loss must be below entry» под полем и на кнопке | нет |
 | TP не с той стороны | Поле TP, кнопка | «Take profit must be above entry» под полем и на кнопке | нет |
-| Risk без SL | Quantity, кнопка | «—», «Turn on stop loss to calculate shares», «Set stop loss to calculate size» | нет |
+| Risk без SL | Quantity, кнопка | «—», «Set stop loss to calculate size» (подписи под полем нет) | нет |
 | Дробный объём в Risk | Поле SL, сводка | Округление вниз; фактический риск справа в SL и в сводке | нет |
 | Риск меньше одной акции | Quantity, кнопка | «0 shares», «Risk too small for 1 share (min 4.07 USD)» | нет |
 | Риск больше доступной маржи | Quantity, кнопка | Предупреждение, причина на кнопке | нет |
@@ -656,7 +656,7 @@ Limit, Stop, Risk-режимы Quantity, несколько уровней TP (�
 
 Правила:
 - `shares = floor(risk / |entry − SL|)`. Real risk = shares × |entry − SL|.
-- SL выключен: справа «—», подпись «Turn on stop loss to calculate shares», кнопка неактивна с текстом «Set stop loss to calculate size». В подписи сделай ссылку, которая включает SL и ставит фокус в его поле.
+- SL выключен: справа «—», подписи под полем нет, кнопка неактивна с текстом «Set stop loss to calculate size». В подписи сделай ссылку, которая включает SL и ставит фокус в его поле.
 - Shares = 0, потому что риск меньше одной акции: подпись «Risk is below 1 share (4.07 USD)», кнопка неактивна.
 - Маржа позиции больше доступной: подпись «Not enough margin for {shares} shares · max {maxShares}» (max = floor(available margin / (entry × 2%)), для AAPL по 201.57 это 24,794), кнопка «Not enough margin».
 - При смене режима Quantity количество акций сохраняется, значение пересчитывается в новую единицу. Сам ордер при этом не меняется.

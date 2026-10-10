@@ -116,10 +116,12 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   const riskSized = state.qtyUnit === 'riskMoney' || state.qtyUnit === 'riskBalancePercent';
   let slCircular = false;
   let slDistanceForQty: number | null = null;
-  if (riskSized && state.sl.enabled && entry !== null) {
+  // Without a limit / stop price the stop-loss distance (and so the risk-sized quantity) counts from the price placeholder.
+  const sizingEntry = entry ?? (price && price.placeholder > 0 ? price.placeholder : null);
+  if (riskSized && state.sl.enabled && sizingEntry !== null) {
     if (MONEY_UNITS.includes(state.sl.unit)) slCircular = true;
     else {
-      const lvl = exitLevel('sl', state.sl, state, entry, 1, balance, spec);
+      const lvl = exitLevel('sl', state.sl, state, sizingEntry, 1, balance, spec);
       slDistanceForQty = lvl && !lvl.invalid ? lvl.distance : null;
     }
   }

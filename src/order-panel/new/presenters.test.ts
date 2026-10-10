@@ -339,10 +339,14 @@ describe('Block 3. Risk modes', () => {
     expect(submitText(s, v, AAPL).secondary).toBe('100 AAPL · LMT 199.00 · till Oct 15');
     expect(v.draft).toMatchObject({ side: 'buy', type: 'limit', qty: 100, limitPrice: 199, stopLoss: 195, takeProfit: 207, tif: 'week' });
   });
-  it('SL off: "—", link "Turn on stop loss to calculate shares", button "Set stop loss to calculate size"', () => {
+  it('SL off: "—", no caption or link under the field, button "Set stop loss to calculate size"', () => {
     const s = st({ qtyUnit: 'riskMoney', qtyInput: '400' });
     const v = nv(s);
-    expect(qtyText(s, v, AAPL)).toMatchObject({ right: '—', caption: 'Turn on stop loss to calculate shares', captionAction: 'enable-sl' });
+    expect(qtyText(s, v, AAPL)).toMatchObject({ right: '—', caption: null });
+    // SL on with a Limit price still empty: the stop distance counts from the price placeholder, so shares are computed
+    const open = st({ type: 'limit', side: 'sell', qtyUnit: 'riskMoney', qtyInput: '1016', sl: on('price', '205.89') });
+    expect(nv(open).qty.needsStopLoss).toBe(false);
+    expect(qtyText(open, nv(open), AAPL).caption).not.toMatch(/stop loss/i);
     expect(submitText(s, v, AAPL)).toMatchObject({ secondary: 'Set stop loss to calculate size', disabled: true });
   });
   it('shares = 0: "0 shares", "Risk too small for 1 share (min 4.07 USD)", button disabled with this reason', () => {

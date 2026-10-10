@@ -22,8 +22,6 @@ export type FieldText = {
   rightTone: Tone;
   caption: string | null;
   captionTone: CaptionTone;
-  /** The caption is a link that switches the stop loss on (risk sizing without SL). */
-  captionAction?: 'enable-sl';
 };
 
 const MINUS = '−';
@@ -235,7 +233,7 @@ export function qtyText(state: TicketState, view: TicketView, spec: SymbolSpec):
   const suffix = '';
   const shares = unitsText(units, spec);
   if (risk && view.qty.needsStopLoss) {
-    return { suffix, right: '—', rightTone: 'neutral', caption: 'Turn on stop loss to calculate shares', captionTone: 'neutral', captionAction: 'enable-sl' };
+    return { suffix, right: '—', rightTone: 'neutral', caption: null, captionTone: 'neutral' };
   }
   if (risk && view.qty.riskBelowOne && view.qty.riskPerUnit !== null) {
     return { suffix, right: shares, rightTone: 'neutral', caption: riskTooSmallText(view.qty.riskPerUnit, spec), captionTone: 'error' };

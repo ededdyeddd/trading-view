@@ -185,10 +185,11 @@ test('new · risk sizing: Risk USD turns SL on; default risk 1% of balance; SL s
 
   await pickMenu(page, 'nt-qty-unit', 'Risk USD');
   await expect(page.getByTestId('nt-qty')).toHaveValue('1,000.00');
-  // turning SL off in risk mode brings back the link that turns it on again
+  // turning SL off in risk mode: no link under the field, the button names the reason
   await page.getByTestId('nt-sl-toggle').click();
-  await expect(page.getByTestId('nt-qty-caption')).toHaveText('Turn on stop loss to calculate shares');
-  await page.getByTestId('nt-qty-caption-action').click();
+  await expect(page.getByTestId('nt-qty-caption-action')).toHaveCount(0);
+  await expect(page.getByTestId('nt-submit')).toContainText('Set stop loss to calculate size');
+  await page.getByTestId('nt-sl-toggle').click();
   await expect(page.getByTestId('nt-sl-toggle')).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByTestId('nt-sl-unit')).toContainText('price');
   await expect(page.getByTestId('nt-sl-input')).toHaveValue(/^\d+\.\d{2}$/);

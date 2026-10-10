@@ -86,7 +86,6 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const [extraOpen, setExtraOpen] = useState(false);
   const [tifOpen, setTifOpen] = useState(false);
   const tifRef = useRef<HTMLDivElement>(null);
-  const slInputFocus = useRef(false);
 
   const price = priceText(state, view, spec, labelQuote);
   const pricePh = priceText(state, slowView, spec);
@@ -95,14 +94,6 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const submit = submitText(state, view, spec);
   const summary = view.canSubmit ? summaryParts(view) : null;
   const leftText = percentLeftText(view);
-
-  // "Turn on stop loss" link: focus the SL field once it is enabled.
-  useEffect(() => {
-    if (slInputFocus.current && state.sl.enabled) {
-      slInputFocus.current = false;
-      requestAnimationFrame(() => (document.querySelector('[data-testid=nt-sl-input]') as HTMLInputElement | null)?.focus());
-    }
-  }, [state.sl.enabled]);
 
   // Log each distinct validation error the user runs into (once per change).
   const lastReason = useRef<string | null>(null);
@@ -354,19 +345,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 testId="nt-qty"
               />
               {qty.caption && (
-                <FieldCaption
-                  tone={qty.captionTone}
-                  testId="nt-qty-caption"
-                  onAction={
-                    qty.captionAction === 'enable-sl'
-                      ? () => {
-                          slInputFocus.current = true;
-                          setExitsOpen(true);
-                          t.setExitEnabled('sl', true, slowView);
-                        }
-                      : undefined
-                  }
-                >
+                <FieldCaption tone={qty.captionTone} testId="nt-qty-caption">
                   {qty.caption}
                 </FieldCaption>
               )}

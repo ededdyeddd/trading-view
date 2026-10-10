@@ -238,3 +238,5 @@ Source: the Figma frames `4116:117479` (Market / Limit · Empty / Filled, unit-m
 - Because the main fields are hidden, **Level 1 is edited on the Exit levels screen** too (TP / SL fields bound to the main state; its shares are read-only: the rest of the position; clearing a leg switches it off). Level 1's SL keeps the "Risk" items disabled in risk sizing.
 - **Trash:** on Level 2+ removes the level; on **Level 1 the next level is promoted** (its TP / SL become the main ones, the removed shares join Level 1's remainder). The last trash returns the plain SL / TP fields. Not in the frame — my reading.
 - **Summary** with several levels: `SL −407.00 USD · TP up to +943.00 USD · 3 exits` (SL / TP are totals over the levels). SL in a pill is `#ff9800` (the frame), in the summary `#e78a00` (earlier prompt); two tokens, `--nt-pill-sl` and `--color-sl`.
+
+- **Price warnings are red.** "Fills now" / "Triggers now" (field border, right text, caption) use the error colour although they do not block the button (user, 10 Oct). Warnings in the order summary ("N shares without SL/TP", "No stop loss") stay orange.

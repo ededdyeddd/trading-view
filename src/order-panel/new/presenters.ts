@@ -111,7 +111,8 @@ export function priceText(
 ): FieldText & { placeholder: string; fill: string } {
   const p = view.price;
   const warning = priceWarning(state.side, view);
-  const tone: Tone = warning ? 'warning' : 'neutral';
+  // "Fills now" / "Triggers now" are shown as errors (red) although they do not block the button.
+  const tone: Tone = warning ? 'danger' : 'neutral';
   if (!p) return { suffix: '', right: '', rightTone: 'neutral', caption: null, captionTone: 'neutral', placeholder: '', fill: '' };
   const ready = view.ready && p.placeholder > 0;
   const ref = state.side === 'buy' ? view.ask : view.bid;
@@ -127,7 +128,7 @@ export function priceText(
     right: empty ?? (offsetMode ? (p.value !== null ? fmtPrice(p.value, spec) : '') : offsetText(view, spec, labelOffset)),
     rightTone: empty ? 'muted' : tone,
     caption: warning,
-    captionTone: warning ? 'warning' : 'neutral',
+    captionTone: warning ? 'error' : 'neutral',
     placeholder: phText,
     fill: phText,
   };

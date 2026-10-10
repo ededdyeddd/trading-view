@@ -248,9 +248,9 @@ describe('Block 1. Limit Price', () => {
     const v = nv(s);
     expect(priceText(s, v, AAPL)).toMatchObject({
       right: 'Ask + 0.07',
-      rightTone: 'warning',
+      rightTone: 'danger',
       caption: 'Fills now: price is above Ask',
-      captionTone: 'warning',
+      captionTone: 'error',
     });
     expect(submitText(s, v, AAPL).disabled).toBe(false);
   });
@@ -258,7 +258,7 @@ describe('Block 1. Limit Price', () => {
     const s = st({ type: 'limit', side: 'sell', priceInput: '205.00' });
     expect(priceText(s, nv(s), AAPL).right).toBe('Bid + 3.44');
     const s2 = committed(st({ type: 'limit', side: 'sell', priceInput: '201.00' }));
-    expect(priceText(s2, nv(s2), AAPL)).toMatchObject({ caption: 'Fills now: price is below Bid', captionTone: 'warning' });
+    expect(priceText(s2, nv(s2), AAPL)).toMatchObject({ caption: 'Fills now: price is below Bid', captionTone: 'error' });
   });
   it('limit entry anchors exits: SL/TP from 199.00 (Figma Limit · Filled)', () => {
     const s = st({ type: 'limit', priceInput: '199.00', qtyInput: '100', sl: on('price', '195.00'), tp: on('price', '207.00') });
@@ -282,7 +282,7 @@ describe('Block 2. Stop', () => {
   it('Buy Stop below Ask: "Triggers now: price is below Ask" (warning, submit allowed)', () => {
     const s = committed(st({ type: 'stop', priceInput: '201.00', qtyInput: '100' }));
     const v = nv(s);
-    expect(priceText(s, v, AAPL)).toMatchObject({ caption: 'Triggers now: price is below Ask', captionTone: 'warning' });
+    expect(priceText(s, v, AAPL)).toMatchObject({ caption: 'Triggers now: price is below Ask', captionTone: 'error' });
     expect(v.canSubmit).toBe(true);
   });
   it('Sell Stop above Bid: "Triggers now: price is above Bid"', () => {

@@ -291,7 +291,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                   suffix={price.suffix}
                   right={state.priceInput.trim() === '' ? pricePh.right : price.right}
                   rightTone={state.priceInput.trim() === '' ? pricePh.rightTone : price.rightTone}
-                  state={price.captionTone === 'warning' ? 'warning' : 'default'}
+                  state={price.captionTone === 'error' ? 'error' : 'default'}
                   step={spec.tickSize}
                   decimals={pricePrecision(spec)}
                   signed={state.priceUnit === 'offset'}

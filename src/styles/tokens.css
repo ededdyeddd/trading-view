@@ -107,6 +107,8 @@
   --color-sl: #e78a00; /* "SL" label in the order summary */
   --color-tp: #089981; /* "TP" label in the order summary */
   --color-warning: #e65100; /* warning text (captions) */
+  --nt-pill-sl: #ff9800; /* "SL" in a level pill */
+  --nt-progress-track: #ebebeb; /* color/border/primary/neutral-light */
   --nt-summary-amount: #131722; /* money in the order summary */
   --nt-text-warning: var(--color-warning);
   --nt-link: #2962ff; /* link/primary/default */

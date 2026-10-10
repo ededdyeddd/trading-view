@@ -744,3 +744,119 @@
 .menuDate {
   color: var(--nt-text-secondary);
 }
+
+/* ---------- Partial exits in the Exits block (Figma 4135:149017) ---------- */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressLegend {
+  display: flex;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: var(--nt-tracking-13);
+  color: var(--nt-text);
+}
+
+.progressDot {
+  color: var(--nt-text-secondary);
+}
+
+.progressTrack {
+  height: 8px;
+  border-radius: 12px;
+  background: var(--nt-progress-track);
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: var(--color-tp);
+  transition: width 0.15s;
+}
+
+.progressBarPartial {
+  background: var(--color-sl);
+}
+
+.levelRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.levelTitle {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: var(--nt-tracking-13);
+  color: var(--nt-text-secondary);
+}
+
+.levelPill {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--nt-fill-extra-light);
+}
+
+.levelBody {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 18px;
+  letter-spacing: var(--nt-tracking-14);
+  color: var(--nt-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.levelBody:hover {
+  background: var(--nt-fill-hover);
+}
+
+.levelTp {
+  color: var(--color-tp);
+}
+
+.levelSl {
+  color: var(--nt-pill-sl);
+}
+
+.levelDot,
+.levelNone {
+  color: var(--nt-text-secondary);
+}
+
+.levelDivider {
+  width: 1px;
+  height: 28px;
+  background: var(--nt-border);
+}
+
+.levelTrash {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nt-text);
+}
+
+.levelTrash:hover {
+  background: var(--nt-fill-hover);
+}

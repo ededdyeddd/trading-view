@@ -4,7 +4,7 @@ import { logEvent } from '../../analytics/eventLog';
 import { getSpec, pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber, fmtPrice, fmtQty } from '../../lib/format';
 import type { ExitKind, OrderType } from '../../lib/orderMath';
-import { useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
+import { MAX_PARTIALS, useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
 import type { PartialState } from '../../order-ticket/types';
 import { now, useTradingStore } from '../../store/tradingStore';
 import { useUiStore } from '../../store/uiStore';
@@ -27,7 +27,10 @@ import {
   fillToastText,
   formatExitInput,
   formatQtyInput,
+  level1Parts,
+  levelPercentText,
   marketClosedText,
+  partialParts,
   placedToastText,
   priceLabel,
   priceSwapLabel,
@@ -49,7 +52,9 @@ import {
   ExitLevel,
   FieldCaption,
   FieldLabelMenu,
+  ExitProgress,
   InfoRow,
+  LevelRow,
   OrderSummary,
   SegmentedControl,
   SettingsRow,
@@ -105,6 +110,13 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     if (key && key !== lastReason.current) logEvent('validation_error', { reason: key });
     lastReason.current = key;
   }, [submit.reason]);
+
+  /** Opens the Exit levels screen; `add` appends a new level first. */
+  const openLevels = (add: boolean) => {
+    setPartialsSnapshot(state.partials);
+    if (add && (state.partials.length === 0 || state.partials.length < MAX_PARTIALS)) t.addPartial(view);
+    setScreen('levels');
+  };
 
   const doSubmit = () => {
     if (submit.disabled || !view.draft) {
@@ -344,27 +356,42 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
               <SettingsRow title="Exits" chevron={exitsOpen ? 'up' : 'down'} onClick={() => setExitsOpen((v) => !v)} testId="nt-exits-toggle" />
               {exitsOpen && (
                 <div className={styles.exits}>
-                  {exitBlock('sl')}
-                  <div style={{ height: slHasCaption ? 12 : 16 }} />
-                  {exitBlock('tp')}
-                  {view.riskReward !== null && (
-                    <div className={styles.rr}>
-                      <InfoRow label={'Risk / Reward'} value={riskRewardText(view.riskReward)} />
-                    </div>
+                  {state.partials.length > 0 ? (
+                    <>
+                      <ExitProgress label="Protected size" percent={view.protectedPercent} />
+                      {[0, ...state.partials.map((_, i) => i + 1)].map((n) => (
+                        <div key={n} className={styles.levelGap}>
+                          <LevelRow
+                            testId={`nt-level-row-${n + 1}`}
+                            title={`Level ${n + 1} ∙ ${levelPercentText(n === 0 ? (view.qty.units > 0 ? (view.level1Qty / view.qty.units) * 100 : 0) : view.partials[n - 1].percent)}`}
+                            legs={n === 0 ? level1Parts(view, spec) : partialParts(view, n - 1, spec)}
+                            onOpen={() => openLevels(false)}
+                            onRemove={() => (n === 0 ? t.removeLevel1() : t.removePartial(n - 1))}
+                          />
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      {exitBlock('sl')}
+                      <div style={{ height: slHasCaption ? 12 : 16 }} />
+                      {exitBlock('tp')}
+                      {view.riskReward !== null && (
+                        <div className={styles.rr}>
+                          <InfoRow label={'Risk / Reward'} value={riskRewardText(view.riskReward)} />
+                        </div>
+                      )}
+                    </>
                   )}
-                  {state.tp.enabled && (
-                    <div className={`${styles.addLevel} ${view.riskReward === null ? styles.addLevelAlone : ''}`}>
+                  {(state.tp.enabled || state.partials.length > 0) && (
+                    <div className={`${styles.addLevel} ${state.partials.length > 0 ? styles.addLevelAfterLevels : view.riskReward === null ? styles.addLevelAlone : ''}`}>
                       <TextButton
-                        onClick={() => {
-                          setPartialsSnapshot(state.partials);
-                          if (!state.partials.length) t.addPartial(view);
-                          setScreen('levels');
-                        }}
-                        disabled={!(view.qty.units > 0 && view.level1Qty >= 2 * spec.minQty) && !state.partials.length}
-                        disabledReason="Enter a quantity of at least 2 to split the exit"
+                        onClick={() => openLevels(true)}
+                        disabled={!(view.qty.units > 0 && view.level1Qty >= 2 * spec.minQty) || state.partials.length >= MAX_PARTIALS}
+                        disabledReason={state.partials.length >= MAX_PARTIALS ? 'Maximum number of levels' : 'Enter a quantity of at least 2 to split the exit'}
                         testId="nt-partial-exit"
                       >
-                        {state.partials.length ? `Partial exits · ${state.partials.length + 1} levels` : 'Add partial exit'}
+                        Add partial exit
                       </TextButton>
                     </div>
                   )}

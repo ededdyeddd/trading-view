@@ -1,9 +1,9 @@
-import { ArrowLeftRight, ChevronDown, ChevronRight, ChevronUp, Clock3, Info, LoaderCircle, Plus, X } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, ChevronRight, ChevronUp, Clock3, Info, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { parseNum } from '../../../lib/format';
 import type { Side } from '../../../lib/orderMath';
 import { MenuItem, Popover } from '../../../ui/Popover';
-import type { CaptionTone, Tone } from '../presenters';
+import type { CaptionTone, SummaryPart, Tone } from '../presenters';
 import s from './ui.module.css';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -681,8 +681,6 @@ export function SubmitButton({ side, primary, secondary, disabled, loading, onCl
   );
 }
 
-export type SummaryPart = { label: 'SL' | 'TP'; amount: string };
-
 /** Pinned footer: optional summary ("SL −407.00 USD · TP +943.00 USD", coloured labels) wrapping the submit button. */
 export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null; children: ReactNode }) {
   if (!parts || parts.length === 0) return <>{children}</>;
@@ -690,14 +688,77 @@ export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null;
     <div className={s.footerBlock}>
       <div className={s.summary} data-testid="nt-summary">
         {parts.map((p, i) => (
-          <span key={p.label}>
+          <span key={`${p.label}${i}`}>
             {i > 0 && <span className={s.summarySep}> · </span>}
-            <span className={p.label === 'SL' ? s.summaryLabelSl : s.summaryLabelTp}>{p.label}</span>
-            <span className={s.summaryAmount}> {p.amount}</span>
+            {p.label ? (
+              <>
+                <span className={p.label === 'SL' ? s.summaryLabelSl : s.summaryLabelTp}>{p.label}</span>
+                <span className={s.summaryAmount}>{p.prefix ? ` ${p.prefix}` : ''} {p.amount}</span>
+              </>
+            ) : (
+              <span className={s.summarySep}>{p.amount}</span>
+            )}
           </span>
         ))}
       </div>
       {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/** "Protected size · 100.00%" with a bar (green at 100%, orange below). */
+export function ExitProgress({ label, percent }: { label: string; percent: number }) {
+  const full = percent >= 99.995;
+  return (
+    <div className={s.progress} data-testid="nt-protected">
+      <div className={s.progressLegend}>
+        <span>{label}</span>
+        <span className={s.progressDot}>∙</span>
+        <span data-testid="nt-protected-value">{`${percent.toFixed(2)}%`}</span>
+      </div>
+      <div className={s.progressTrack} role="progressbar" aria-label={label} aria-valuenow={Math.round(percent)}>
+        <div className={cx(s.progressBar, !full && s.progressBarPartial)} style={{ width: `${Math.min(100, percent)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export type LevelLeg = { label: 'TP' | 'SL'; text: string };
+
+/** "Level 2 ∙ 25%" over a pill "TP 25 @ 211.00 ∙ SL 25 @ 197.50" with a trash button; the pill opens the Exit levels screen. */
+export function LevelRow({
+  title,
+  legs,
+  onOpen,
+  onRemove,
+  testId,
+}: {
+  title: string;
+  legs: LevelLeg[];
+  onOpen: () => void;
+  onRemove: () => void;
+  testId: string;
+}) {
+  return (
+    <div className={s.levelRow} data-testid={testId}>
+      <div className={s.levelTitle}>{title}</div>
+      <div className={s.levelPill}>
+        <button type="button" className={s.levelBody} onClick={onOpen} data-testid={`${testId}-open`}>
+          {legs.length === 0 && <span className={s.levelNone}>No exits</span>}
+          {legs.map((l, i) => (
+            <span key={l.label}>
+              {i > 0 && <span className={s.levelDot}> ∙ </span>}
+              <span className={l.label === 'TP' ? s.levelTp : s.levelSl}>{l.label}</span> {l.text}
+            </span>
+          ))}
+        </button>
+        <span className={s.levelDivider} />
+        <button type="button" className={s.levelTrash} aria-label={`Remove ${title.split(' ∙')[0]}`} onClick={onRemove} data-testid={`${testId}-remove`}>
+          <Trash2 size={18} strokeWidth={1.3} />
+        </button>
+      </div>
     </div>
   );
 }

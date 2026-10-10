@@ -102,6 +102,10 @@ type Actions = {
   /** Shares ⇆ % of the position; keeps the quantity. */
   setPartialQtyUnit: (index: number, unit: PartialState['qtyUnit'], view: TicketView) => void;
   setPartialLeg: (index: number, kind: ExitKind, text: string) => void;
+  /** Level 1's leg from the Exit levels screen: a typed value switches it on, an empty one switches it off. */
+  setLevel1Leg: (kind: ExitKind, text: string) => void;
+  /** Deletes Level 1: the next level takes its place (its TP / SL become the main ones, its shares join Level 1's remainder). */
+  removeLevel1: () => void;
   setPartialLegUnit: (index: number, kind: ExitKind, unit: ExitUnit, view: TicketView) => void;
   setGtdTime: (time: string) => void;
   /** Replace the whole TIF selection (GTD with date and time). */
@@ -206,6 +210,18 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     logEvent('field_change', { field: 'partials', value: get().partials.length });
   },
   setPartials: (partials) => set({ partials }),
+  setLevel1Leg: (kind, text) => {
+    set((s) => ({ [kind]: { ...s[kind], input: text, enabled: text.trim() !== '', touched: true } }) as Partial<TicketState>);
+    logFieldChange(`level1${kind}`, text);
+  },
+  removeLevel1: () => {
+    const s = get();
+    const next = s.partials[0];
+    if (!next) return;
+    const leg = (kind: ExitKind): ExitState => ({ enabled: next[kind].input.trim() !== '', unit: next[kind].unit, input: next[kind].input, touched: true });
+    set({ tp: leg('tp'), sl: leg('sl'), partials: s.partials.slice(1) });
+    logEvent('field_change', { field: 'partials', value: s.partials.length });
+  },
   setPartialQty: (index, text) => {
     set((s) => ({ partials: s.partials.map((p, i) => (i === index ? { ...p, qtyInput: text } : p)) }));
     logFieldChange(`partial${index + 2}Qty`, text);

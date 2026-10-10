@@ -143,6 +143,15 @@
   padding: 12px 0; /* Figma 4135:141479: 12 above and below the Risk / Reward row */
 }
 
+.levelGap {
+  padding-top: 16px;
+}
+
+/* Figma 4135:149017: 16 + 12 below the last level */
+.addLevelAfterLevels {
+  padding-top: 28px;
+}
+
 .addLevel {
   display: flex;
 }

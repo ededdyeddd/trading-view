@@ -231,3 +231,10 @@ Source: the Figma frames `4116:117479` (Market / Limit · Empty / Filled, unit-m
 - **Totals.** Summary = sum of SL money and of TP money over the levels that have the leg. R:R = total reward / total risk, only when every level has both legs. Protected size = share of the position with a stop loss.
 - **Edits apply live** (chart lines follow, the main fields show Level 1's money); Discard / back / × restore the snapshot taken when the screen opened, Confirm keeps it. The main button then reads "Partial exits · N levels".
 - **Not built:** level 1 cannot be deleted (no trash on its row); the "Add level" link inside the screen keeps the label of the screenshot; per-leg ⇆ and the second dropdown on the right of TP / SL fields from the screenshot are replaced by our label menu + grey money.
+
+## Levels on the ticket (Figma 4135:149017)
+
+- With partial exits the **Exits block replaces the SL / TP fields and Risk / Reward** with: "Protected size ∙ 100.00%" + bar (green at 100%, orange below), a row per level ("Level 1 ∙ 50%" over a pill "TP 50 @ 206.00 ∙ SL 50 @ 197.50" with a trash button) and "Add partial exit" (always this label now; disabled at 5 levels or without shares to split). A pill opens the Exit levels screen. Metrics match the frame (progress 50, levels 100 / 170 / 240, button 322 inside the Exits block).
+- Because the main fields are hidden, **Level 1 is edited on the Exit levels screen** too (TP / SL fields bound to the main state; its shares are read-only: the rest of the position; clearing a leg switches it off). Level 1's SL keeps the "Risk" items disabled in risk sizing.
+- **Trash:** on Level 2+ removes the level; on **Level 1 the next level is promoted** (its TP / SL become the main ones, the removed shares join Level 1's remainder). The last trash returns the plain SL / TP fields. Not in the frame — my reading.
+- **Summary** with several levels: `SL −407.00 USD · TP up to +943.00 USD · 3 exits` (SL / TP are totals over the levels). SL in a pill is `#ff9800` (the frame), in the summary `#e78a00` (earlier prompt); two tokens, `--nt-pill-sl` and `--color-sl`.

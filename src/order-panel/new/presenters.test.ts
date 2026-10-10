@@ -17,6 +17,8 @@ import {
   marketClosedText,
   level1Parts,
   levelHeadingText,
+  levelPercentText,
+  partialParts,
   levelMenuValue,
   orderTitleText,
   placedToastText,
@@ -402,7 +404,7 @@ describe('Block 5. Partial exits (Exit levels)', () => {
     expect([v.partials[0].sl.level?.money, v.partials[0].tp.level?.money]).toEqual([-80, 160]);
     // totals over all levels: summary, R:R, protected size
     expect([v.slMoney, v.tpMoney]).toEqual([-320, 640]);
-    expect(summaryText(v)).toBe('SL −320.00 USD · TP +640.00 USD');
+    expect(summaryText(v)).toBe('SL −320.00 USD · TP up to +640.00 USD · 2 exits');
     expect(v.riskReward).toBeCloseTo(2, 9);
     expect(v.protectedPercent).toBe(100);
   });
@@ -446,6 +448,16 @@ describe('Block 5. Partial exits (Exit levels)', () => {
     const v = nv({ ...base, partials: [part('40', '203.00', '197.00')] });
     expect(orderTitleText(base, v, AAPL)).toBe('Buy Limit 100 @ 199.00');
     expect(levelHeadingText(1, 40)).toBe('Level 2 · 40.00%');
+    expect([levelPercentText(50), levelPercentText(33.33), levelPercentText(0.24)]).toEqual(['50%', '33.33%', '0.24%']);
+    expect(partialParts(v, 0, AAPL)).toEqual([
+      { label: 'TP', text: '40 @ 203.00' },
+      { label: 'SL', text: '40 @ 197.00' },
+    ]);
+    expect(summaryParts(v)).toEqual([
+      { label: 'SL', amount: '−320.00 USD' },
+      { label: 'TP', prefix: 'up to', amount: '+640.00 USD' },
+      { label: null, amount: '2 exits' },
+    ]);
     expect(level1Parts(v, AAPL)).toEqual([
       { label: 'TP', text: '60 @ 207.00' },
       { label: 'SL', text: '60 @ 195.00' },

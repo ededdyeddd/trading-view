@@ -1,7 +1,7 @@
 import { ChevronLeft, Trash2, X } from 'lucide-react';
 import { pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber } from '../../lib/format';
-import type { ExitKind, ExitUnit } from '../../lib/orderMath';
+import type { ExitKind, ExitLevel, ExitUnit } from '../../lib/orderMath';
 import { MAX_PARTIALS, useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
 import type { PartialState } from '../../order-ticket/types';
 import { SymbolLogo } from '../../ui/SymbolLogo';
@@ -10,10 +10,10 @@ import {
   DASH,
   EXIT_UNITS,
   exitTitle,
+  exitUnitBlocked,
   exitUnitInfo,
   exitUnitLabel,
   formatExitInput,
-  level1Parts,
   levelHeadingText,
   levelMenuValue,
   levelText,
@@ -43,53 +43,105 @@ export function ExitLevelsPanel({ ticket, snapshot, onClose }: Props) {
     t.setPartials(snapshot);
     onClose();
   };
-  const l1 = level1Parts(view, spec);
   const canAdd = state.partials.length < MAX_PARTIALS && view.level1Qty >= 2 * spec.minQty;
   const level1Percent = view.qty.units > 0 ? (view.level1Qty / view.qty.units) * 100 : 0;
   const protectedFull = view.protectedPercent >= 99.995;
 
-  const leg = (kind: ExitKind, index: number) => {
-    const p = state.partials[index];
-    const v = view.partials[index];
-    const lv = v[kind];
-    const text = levelText(kind, p[kind].unit, lv.level, state.side, spec, v.qty > 0, lv.level?.money);
-    const decimals = p[kind].unit === 'price' ? pricePrecision(spec) : p[kind].unit === 'ticks' ? 0 : 2;
-    const sv = slowView.partials[index] ?? v;
+  type LegProps = {
+    kind: ExitKind;
+    /** test-id prefix: "nt-p2-tp" */
+    id: string;
+    ariaLabel: string;
+    unit: ExitUnit;
+    input: string;
+    placeholder: string;
+    level: ExitLevel | null;
+    menuLevel: ExitLevel | null;
+    hasQty: boolean;
+    error: string | null;
+    onInput: (text: string) => void;
+    onUnit: (unit: ExitUnit) => void;
+    blocked?: (unit: ExitUnit) => string | null;
+  };
+  const legField = (l: LegProps) => {
+    const text = levelText(l.kind, l.unit, l.level, state.side, spec, l.hasQty, l.level?.money);
+    const decimals = l.unit === 'price' ? pricePrecision(spec) : l.unit === 'ticks' ? 0 : 2;
     return (
-      <div className={styles.field} data-testid={`nt-p${index + 2}-${kind}`}>
+      <div className={styles.field} data-testid={l.id}>
         <div className={styles.label}>
           <FieldLabelMenu<ExitUnit>
-            label={`${exitTitle(kind)} ${exitUnitLabel(kind, p[kind].unit)}`}
-            value={p[kind].unit}
+            label={`${exitTitle(l.kind)} ${exitUnitLabel(l.kind, l.unit)}`}
+            value={l.unit}
             options={EXIT_UNITS.map((u) => ({
               value: u,
-              label: capitalize(exitUnitLabel(kind, u)),
-              end: levelMenuValue(u, p[kind], sv[kind].level, sv.qty > 0, spec),
-              info: exitUnitInfo(kind, u),
+              label: capitalize(exitUnitLabel(l.kind, u)),
+              end: levelMenuValue(u, { unit: l.unit, input: l.input }, l.menuLevel, l.hasQty, spec),
+              info: exitUnitInfo(l.kind, u),
+              disabled: !!l.blocked?.(u),
+              disabledReason: l.blocked?.(u) ?? undefined,
             }))}
-            onChange={(u) => t.setPartialLegUnit(index, kind, u, view)}
-            testId={`nt-p${index + 2}-${kind}-unit`}
+            onChange={l.onUnit}
+            testId={`${l.id}-unit`}
           />
         </div>
         <ValueField
-          value={p[kind].input}
-          display={formatExitInput(p[kind].input, p[kind].unit, spec)}
-          onChange={(x) => t.setPartialLeg(index, kind, x)}
-          placeholder={DASH}
+          value={l.input}
+          display={formatExitInput(l.input, l.unit, spec)}
+          onChange={l.onInput}
+          placeholder={l.placeholder}
           placeholderStyle="text"
           right={text.right}
           rightTone="neutral"
-          state={lv.error ? 'error' : 'default'}
-          step={p[kind].unit === 'price' ? spec.tickSize : 1}
+          state={l.error ? 'error' : 'default'}
+          step={l.unit === 'price' ? spec.tickSize : 1}
           decimals={decimals}
-          ariaLabel={`Level ${index + 2} ${exitTitle(kind).toLowerCase()}`}
-          testId={`nt-p${index + 2}-${kind}-input`}
+          ariaLabel={l.ariaLabel}
+          testId={`${l.id}-input`}
         />
-        {(lv.error || text.caption) && (
-          <FieldCaption tone={lv.error ? 'error' : text.captionTone}>{lv.error ?? text.caption}</FieldCaption>
-        )}
+        {(l.error || text.caption) && <FieldCaption tone={l.error ? 'error' : text.captionTone}>{l.error ?? text.caption}</FieldCaption>}
       </div>
     );
+  };
+
+  const leg = (kind: ExitKind, index: number) => {
+    const p = state.partials[index];
+    const v = view.partials[index];
+    const sv = slowView.partials[index] ?? v;
+    return legField({
+      kind,
+      id: `nt-p${index + 2}-${kind}`,
+      ariaLabel: `Level ${index + 2} ${exitTitle(kind).toLowerCase()}`,
+      unit: p[kind].unit,
+      input: p[kind].input,
+      placeholder: DASH,
+      level: v[kind].level,
+      menuLevel: sv[kind].level,
+      hasQty: v.qty > 0,
+      error: v[kind].error,
+      onInput: (x) => t.setPartialLeg(index, kind, x),
+      onUnit: (u) => t.setPartialLegUnit(index, kind, u, view),
+    });
+  };
+
+  /** Level 1 = the main stop loss / take profit. */
+  const leg1 = (kind: ExitKind) => {
+    const ex = view[kind];
+    const ph = slowView[kind].placeholder;
+    return legField({
+      kind,
+      id: `nt-l1-${kind}`,
+      ariaLabel: `Level 1 ${exitTitle(kind).toLowerCase()}`,
+      unit: ex.unit,
+      input: ex.enabled ? ex.input : '',
+      placeholder: ph ? formatExitInput(ph, ex.unit, spec) : DASH,
+      level: ex.enabled ? ex.level : null,
+      menuLevel: slowView[kind].level ?? slowView[kind].placeholderLevel,
+      hasQty: view.level1Qty > 0,
+      error: ex.enabled ? ex.error : null,
+      onInput: (x) => t.setLevel1Leg(kind, x),
+      onUnit: (u) => t.setExitUnit(kind, u, view),
+      blocked: (u) => exitUnitBlocked(kind, u, state),
+    });
   };
 
   return (
@@ -131,14 +183,25 @@ export function ExitLevelsPanel({ ticket, snapshot, onClose }: Props) {
         <div className={styles.levelHead}>
           <span className={styles.muted}>{levelHeadingText(0, level1Percent)}</span>
         </div>
-        <div className={styles.summary} data-testid="nt-level-1">
-          {l1.length === 0 && <span className={styles.muted}>No exits set</span>}
-          {l1.map((p, i) => (
-            <span key={p.label}>
-              {i > 0 && <span className={styles.sep}> • </span>}
-              <span className={p.label === 'TP' ? styles.tp : styles.sl}>{p.label}</span> {p.text}
-            </span>
-          ))}
+        <div className={styles.card} data-testid="nt-level-1">
+          <div className={styles.field}>
+            <div className={styles.label}>
+              <span className={styles.staticLabel}>{spec.qtyLabel}</span>
+            </div>
+            <ValueField
+              value={fmtNumber(view.level1Qty, qtyPrecision(spec))}
+              onChange={() => undefined}
+              placeholder="0"
+              right={`${fmtNumber(level1Percent, 2)}%`}
+              rightTone="neutral"
+              disabled
+              ariaLabel="Level 1 shares"
+              testId="nt-l1-qty"
+            />
+            <FieldCaption tone="neutral">The rest of the position</FieldCaption>
+          </div>
+          {leg1('tp')}
+          {leg1('sl')}
         </div>
 
         {state.partials.map((p, i) => {

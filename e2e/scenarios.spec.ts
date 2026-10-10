@@ -309,35 +309,58 @@ test.describe('new · partial exits (Exit levels screen), frozen AAPL 201.56 / 2
         .map((o: { role: string; qty: number; limitPrice?: number; stopPrice?: number }) => [o.role, o.qty, o.limitPrice ?? o.stopPrice]);
     });
 
-  test('"Add partial exit" opens the screen with Level 2; Confirm keeps it, the order carries one TP / SL pair per level', async ({ page }) => {
+  test('"Add partial exit" opens the screen with Level 2; Confirm shows the levels on the panel; the order carries one TP / SL pair per level', async ({ page }) => {
     await openFrozen(page);
     await page.getByTestId('nt-type-market').click();
     await page.getByTestId('nt-qty').fill('100');
     await expect(page.getByTestId('nt-partial-exit')).toHaveCount(0); // only with a take profit on
     await page.getByTestId('nt-sl-toggle').click();
     await page.getByTestId('nt-tp-toggle').click();
-    await expect(page.getByTestId('nt-partial-exit')).toHaveText('Add partial exit');
     await page.getByTestId('nt-partial-exit').click();
 
     await expect(page.getByTestId('exit-levels')).toBeVisible();
     await expect(page.getByTestId('nt-levels-order')).toHaveText('Buy Market 100 @ 201.57');
-    await expect(page.getByTestId('nt-level-1')).toContainText('TP 50 @');
+    await expect(page.getByTestId('nt-l1-qty')).toHaveValue('50.00'.replace('.00', ''));
     await expect(page.getByTestId('nt-level-2-qty')).toHaveValue('50');
-    // Level 2: 40 shares, its own TP / SL
+    // Level 2: 40 shares, its own TP / SL; Level 1 keeps 60
     await page.getByTestId('nt-level-2-qty').fill('40');
-    await expect(page.getByTestId('nt-level-1')).toContainText('TP 60 @');
+    await expect(page.getByTestId('nt-l1-qty')).toHaveValue('60');
     await page.getByTestId('nt-p2-tp-input').fill('203.00');
     await page.getByTestId('nt-p2-sl-input').fill('198.00');
     await expect(page.getByTestId('nt-levels-rr')).not.toHaveText('—');
     await page.getByTestId('nt-levels-confirm').click();
 
+    // the Exits block now lists the levels (Figma 4135:149017) instead of the SL / TP fields
     await expect(page.getByTestId('exit-levels')).toHaveCount(0);
-    await expect(page.getByTestId('nt-partial-exit')).toHaveText('Partial exits · 2 levels');
+    await expect(page.getByTestId('nt-sl-input')).toHaveCount(0);
+    await expect(page.getByTestId('nt-protected-value')).toHaveText('100.00%');
+    await expect(page.getByTestId('nt-level-row-1')).toContainText('Level 1 ∙ 60%');
+    await expect(page.getByTestId('nt-level-row-2')).toContainText('TP 40 @ 203.00 ∙ SL 40 @ 198.00');
+    await expect(page.getByTestId('nt-summary')).toContainText('2 exits');
+    await expect(page.getByTestId('nt-summary')).toContainText('TP up to +');
     await page.getByTestId('nt-submit').click();
     const orders = await exitOrders(page);
     expect(orders).toContainEqual(['tp', 40, 203]);
     expect(orders).toContainEqual(['sl', 40, 198]);
     expect(orders.filter((o: [string, number]) => o[1] === 60)).toHaveLength(2);
+  });
+
+  test('trash on a level removes it; trash on Level 1 promotes the next level; the last trash brings back the SL / TP fields', async ({ page }) => {
+    await openFrozen(page);
+    await page.getByTestId('nt-type-market').click();
+    await page.getByTestId('nt-qty').fill('100');
+    await page.getByTestId('nt-sl-toggle').click();
+    await page.getByTestId('nt-tp-toggle').click();
+    await page.getByTestId('nt-partial-exit').click();
+    await page.getByTestId('nt-levels-confirm').click();
+    await page.getByTestId('nt-partial-exit').click(); // a third level
+    await page.getByTestId('nt-levels-confirm').click();
+    await expect(page.getByTestId('nt-level-row-3')).toBeVisible();
+    await page.getByTestId('nt-level-row-3-remove').click();
+    await expect(page.getByTestId('nt-level-row-3')).toHaveCount(0);
+    await page.getByTestId('nt-level-row-1-remove').click(); // Level 2 becomes the only level
+    await expect(page.getByTestId('nt-level-row-1')).toHaveCount(0);
+    await expect(page.getByTestId('nt-sl-input')).toBeVisible();
   });
 
   test('Discard restores the exits; shares ⇆ % keeps the quantity; a level over the position blocks Confirm', async ({ page }) => {
@@ -353,7 +376,7 @@ test.describe('new · partial exits (Exit levels screen), frozen AAPL 201.56 / 2
     await expect(page.getByTestId('nt-levels-confirm')).toBeDisabled();
     await expect(page.getByTestId('nt-levels-error')).toHaveText('Level 1 has no shares left');
     await page.getByTestId('nt-levels-discard').click();
-    await expect(page.getByTestId('nt-partial-exit')).toHaveText('Add partial exit');
+    await expect(page.getByTestId('nt-sl-input')).toBeVisible(); // Discard: back to the plain SL / TP fields
     await expect(page.getByTestId('nt-submit')).toBeEnabled();
   });
 });

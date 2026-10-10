@@ -411,6 +411,21 @@ export function orderTitleText(state: TicketState, view: TicketView, spec: Symbo
   return `${side} ${type} ${fmtQty(view.qty.units, spec)}${px}`;
 }
 
+/** "50%", "33.33%": the share without trailing zeros (Level rows on the main panel). */
+export function levelPercentText(percent: number): string {
+  return `${fmtNumber(percent, 2).replace(/\.?0+$/, '')}%`;
+}
+
+/** The legs of partial exit `index` (0 = Level 2) as "TP 25 @ 211.00" / "SL 25 @ 197.50". */
+export function partialParts(view: TicketView, index: number, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
+  const p = view.partials[index];
+  const qty = fmtQty(p.qty, spec);
+  const parts: { label: 'TP' | 'SL'; text: string }[] = [];
+  if (p.tp.level && !p.tp.level.invalid) parts.push({ label: 'TP', text: `${qty} @ ${fmtPrice(p.tp.level.price, spec)}` });
+  if (p.sl.level && !p.sl.level.invalid) parts.push({ label: 'SL', text: `${qty} @ ${fmtPrice(p.sl.level.price, spec)}` });
+  return parts;
+}
+
 /** "Level 2 · 20.00%". */
 export function levelHeadingText(index: number, percent: number): string {
   return `Level ${index + 1} · ${fmtNumber(percent, 2)}%`;
@@ -464,16 +479,24 @@ export function riskRewardText(rr: number): string {
   return `1 : ${fmtNumber(rr, 2)}`;
 }
 
-export function summaryParts(view: TicketView): { label: 'SL' | 'TP'; amount: string }[] | null {
-  const parts: { label: 'SL' | 'TP'; amount: string }[] = [];
+export type SummaryPart = { label: 'SL' | 'TP' | null; /** "up to" before the amount */ prefix?: string; amount: string };
+
+/**
+ * Summary above the button: "SL −407.00 USD · TP +943.00 USD". With partial exits the take profit is the most the
+ * levels can earn and the exit count follows: "SL −407.00 USD · TP up to +943.00 USD · 3 exits".
+ */
+export function summaryParts(view: TicketView): SummaryPart[] | null {
+  const parts: SummaryPart[] = [];
+  const levels = view.partials.length + 1;
   if (view.slMoney !== null) parts.push({ label: 'SL', amount: signedMoney(view.slMoney) });
-  if (view.tpMoney !== null) parts.push({ label: 'TP', amount: signedMoney(view.tpMoney) });
+  if (view.tpMoney !== null) parts.push({ label: 'TP', prefix: levels > 1 ? 'up to' : undefined, amount: signedMoney(view.tpMoney) });
+  if (parts.length && levels > 1) parts.push({ label: null, amount: `${levels} exits` });
   return parts.length ? parts : null;
 }
 
-/** Plain-text summary: "SL −407.00 USD · TP +943.00 USD" (totals over all levels). */
+/** Plain-text summary. */
 export function summaryText(view: TicketView): string | null {
-  return summaryParts(view)?.map((p) => `${p.label} ${p.amount}`).join(' · ') ?? null;
+  return summaryParts(view)?.map((p) => [p.label, p.prefix, p.amount].filter(Boolean).join(' ')).join(' · ') ?? null;
 }
 
 export type SubmitText = { primary: string; secondary: string; disabled: boolean; reason: string | null };

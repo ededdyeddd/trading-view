@@ -313,7 +313,7 @@ test.describe('new · partial exits (Exit levels screen), frozen AAPL 201.56 / 2
     await openFrozen(page);
     await page.getByTestId('nt-type-market').click();
     await page.getByTestId('nt-qty').fill('100');
-    await expect(page.getByTestId('nt-partial-exit')).toHaveCount(0); // only with a take profit on
+    await expect(page.getByTestId('nt-partial-exit')).toHaveCount(0); // only with both SL and TP on
     await page.getByTestId('nt-sl-toggle').click();
     await page.getByTestId('nt-tp-toggle').click();
     await page.getByTestId('nt-partial-exit').click();
@@ -347,12 +347,14 @@ test.describe('new · partial exits (Exit levels screen), frozen AAPL 201.56 / 2
     expect(orders.filter((o: [string, number]) => o[1] === 60)).toHaveLength(2);
   });
 
-  test('"Add partial exit" is available with any SL / TP on, also with 1 share: Level 2 starts with empty shares', async ({ page }) => {
+  test('"Add partial exit" is available once both SL and TP are on, also with 1 share: Level 2 starts with empty shares', async ({ page }) => {
     await openFrozen(page);
     await page.getByTestId('nt-type-market').click();
     await page.getByTestId('nt-qty').fill('1');
     await expect(page.getByTestId('nt-partial-exit')).toHaveCount(0); // no SL / TP on
-    await page.getByTestId('nt-sl-toggle').click(); // an SL alone is enough
+    await page.getByTestId('nt-sl-toggle').click();
+    await expect(page.getByTestId('nt-partial-exit')).toHaveCount(0); // an SL alone is not enough
+    await page.getByTestId('nt-tp-toggle').click();
     await expect(page.getByTestId('nt-partial-exit')).not.toHaveAttribute('aria-disabled', 'true');
     await page.getByTestId('nt-partial-exit').click();
     await expect(page.getByTestId('nt-level-2-qty')).toHaveValue('');

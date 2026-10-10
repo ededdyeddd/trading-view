@@ -383,7 +383,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                       )}
                     </>
                   )}
-                  {(state.sl.enabled || state.tp.enabled || state.partials.length > 0) && (
+                  {((state.sl.enabled && state.tp.enabled) || state.partials.length > 0) && (
                     <div className={`${styles.addLevel} ${state.partials.length > 0 ? styles.addLevelAfterLevels : view.riskReward === null ? styles.addLevelAlone : ''}`}>
                       <TextButton
                         onClick={() => openLevels(true)}

@@ -249,6 +249,68 @@ describe('multiple take-profit levels', () => {
   });
 });
 
+describe('partial exits (exitLevels): a TP / SL pair per level', () => {
+  const levels = [
+    { qty: 60, takeProfit: 205, stopLoss: 199 },
+    { qty: 40, takeProfit: 203, stopLoss: 198 },
+  ];
+  it('creates a TP and an SL leg per level, linked one-cancels-other inside the level', () => {
+    const s = placeOrder(createEngineState(), draft({ exitLevels: levels }), quotes(AAPL), T0).state;
+    expect(working(s).map((o) => [o.role, o.qty, o.limitPrice ?? o.stopPrice])).toEqual([
+      ['tp', 60, 205],
+      ['sl', 60, 199],
+      ['tp', 40, 203],
+      ['sl', 40, 198],
+    ]);
+    const legs = working(s);
+    expect(legs[0].ocoId).toBe(legs[1].id);
+    expect(legs[1].ocoId).toBe(legs[0].id);
+    expect(legs[0].exitGroup).not.toBe(legs[2].exitGroup);
+  });
+  it('a TP fill cancels only its own level stop; the other level stays', () => {
+    let s = placeOrder(createEngineState(), draft({ exitLevels: levels }), quotes(AAPL), T0).state;
+    s = onQuote(s, q(203, 203.01), T0).state;
+    expect(working(s).map((o) => [o.role, o.qty, o.limitPrice ?? o.stopPrice])).toEqual([
+      ['tp', 60, 205],
+      ['sl', 60, 199],
+    ]);
+    expect(s.positions.AAPL.qty).toBe(60);
+  });
+  it('a stop fill cancels only its own level take profit', () => {
+    let s = placeOrder(createEngineState(), draft({ exitLevels: levels }), quotes(AAPL), T0).state;
+    s = onQuote(s, q(198.9, 199), T0).state; // 199 stop of the 60-share level
+    expect(working(s).map((o) => [o.role, o.qty])).toEqual([
+      ['tp', 40],
+      ['sl', 40],
+    ]);
+    expect(s.positions.AAPL.qty).toBe(40);
+  });
+  it('a level may have only a stop loss or only a take profit; a partial exit may leave shares without exits', () => {
+    const s = placeOrder(
+      createEngineState(),
+      draft({ exitLevels: [{ qty: 30, stopLoss: 199 }, { qty: 20, takeProfit: 205 }] }),
+      quotes(AAPL),
+      T0,
+    ).state;
+    expect(working(s).map((o) => [o.role, o.qty])).toEqual([
+      ['sl', 30],
+      ['tp', 20],
+    ]);
+    expect(working(s).every((o) => o.ocoId === undefined)).toBe(true);
+  });
+  it('rejects levels above the position size and levels on the wrong side', () => {
+    const big = placeOrder(createEngineState(), draft({ exitLevels: [{ qty: 80, stopLoss: 199 }, { qty: 30, stopLoss: 198 }] }), quotes(AAPL), T0);
+    expect(big.events[0]).toMatchObject({ type: 'rejected', message: expect.stringContaining('exceed') });
+    const wrong = placeOrder(createEngineState(), draft({ exitLevels: [{ qty: 50, takeProfit: 200 }] }), quotes(AAPL), T0);
+    expect(wrong.events[0].type).toBe('rejected');
+  });
+  it('a closed position cancels every remaining leg', () => {
+    let s = placeOrder(createEngineState(), draft({ exitLevels: levels }), quotes(AAPL), T0).state;
+    s = closePosition(s, 'AAPL', quotes(AAPL), T0).state;
+    expect(working(s)).toHaveLength(0);
+  });
+});
+
 describe('market at open', () => {
   it('a queued market order waits for the session open', () => {
     const open = T0 + 3_600_000;

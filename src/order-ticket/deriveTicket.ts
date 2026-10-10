@@ -4,15 +4,15 @@
  */
 import { pricePrecision, type SymbolSpec } from '../config/symbols';
 import { computeExpiry } from '../engine/paperEngine';
-import type { OrderDraft } from '../engine/types';
-import { parseNum, priceInput as fmtPriceInput } from '../lib/format';
+import type { ExitLevelDraft, OrderDraft } from '../engine/types';
+import { fmtQty, parseNum, priceInput as fmtPriceInput } from '../lib/format';
 import {
   checkPrice,
   defaultExitPrice,
-  defaultLevelPercents,
   defaultOrderPrice,
   describeExit,
   exceedsMargin,
+  floorToStep,
   exitDirection,
   marginFor,
   marketRef,
@@ -27,17 +27,15 @@ import {
   riskPerUnit,
   riskReward,
   roundToTick,
-  splitQty,
   tickValue,
   tradeValue,
-  weightedAverage,
   exitValueInUnit,
   type ExitKind,
   type ExitLevel,
   type ExitUnit,
 } from '../lib/orderMath';
 import type { Quote } from '../market/types';
-import type { DisabledReason, ExitState, ExitView, QtyView, TicketState, TicketView, TpLevelView } from './types';
+import type { DisabledReason, ExitState, ExitView, PartialLegView, PartialState, PartialView, QtyView, TicketState, TicketView } from './types';
 
 /** Production defaults: TP 75 ticks, SL 25 ticks from entry. */
 export const DEFAULT_EXIT_TICKS: Record<ExitKind, number> = { tp: 75, sl: 25 };
@@ -133,11 +131,15 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
       : { qty: 0, needsStopLoss: riskSized && !state.sl.enabled };
   const units = qtyRes.qty;
 
+  // 2b. Partial exits (Level 2+) take shares out of the position; Level 1 (the main SL / TP) keeps the rest.
+  const partialQtys = state.partials.map((p) => partialQty(p, units, spec));
+  const level1Qty = state.partials.length ? Math.max(0, Number((units - partialQtys.reduce((a, q) => a + q, 0)).toFixed(10))) : units;
+
   // 3. Exits with the final quantity -------------------------------------------
   // Placeholders of exits count from the entry; a limit without a price counts from the price placeholder.
   const placeholderEntry = entry ?? (price && price.placeholder > 0 ? price.placeholder : null);
-  const sl = exitView('sl', state.sl, state, entry, units, balance, spec, slCircular, placeholderEntry);
-  const tp = exitView('tp', state.tp, state, entry, units, balance, spec, false, placeholderEntry);
+  const sl = exitView('sl', state.sl, state, entry, level1Qty, balance, spec, slCircular, placeholderEntry);
+  const tp = exitView('tp', state.tp, state, entry, level1Qty, balance, spec, false, placeholderEntry);
   const slDistance = sl.level && !sl.level.invalid ? sl.level.distance : null;
 
   const eq = qtyEquivalents(units, qtyPrice, balance, slDistance, spec);
@@ -156,49 +158,38 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     placeholder: qtyPlaceholder(spec, qtyPrice, balance, state.sl.enabled && !slCircular ? slDistance : null),
   };
 
-  // 3b. Take-profit levels (TP 1 + up to two extra) ------------------------------
-  const levelCount = 1 + state.tpLevels.length;
-  const defaults = defaultLevelPercents(levelCount);
-  const percents = [state.tpPercent, ...state.tpLevels.map((l) => l.percent)].map((p, i) => {
-    if (levelCount === 1) return 100;
-    const n = parseNum(p);
-    return Number.isFinite(n) ? n : defaults[i];
+  // 3b. Partial exits: each leg is checked and valued at its own quantity.
+  const partials: PartialView[] = state.partials.map((p, i) => {
+    const qty = partialQtys[i];
+    const leg = (kind: ExitKind): PartialLegView => {
+      const l = p[kind];
+      if (l.input.trim() === '' || entry === null) return { level: null, error: null };
+      const level = exitLevel(kind, { enabled: true, unit: l.unit, input: l.input, touched: true }, state, entry, qty > 0 ? qty : 1, balance, spec);
+      if (!level) return { level: null, error: kind === 'sl' ? 'Enter stop loss' : 'Enter take profit' };
+      return { level, error: level.invalid ? wrongSideText(kind, state.side) : null };
+    };
+    const qtyError = !(qty > 0) ? 'Enter shares' : qty < spec.minQty ? `Minimum is ${fmtQty(spec.minQty, spec)}` : null;
+    return { qty, percent: units > 0 ? (qty / units) * 100 : 0, qtyError, tp: leg('tp'), sl: leg('sl') };
   });
-  const levelQty = splitQty(units, percents, spec.qtyStep);
-  const tpLevels: TpLevelView[] = [{ input: tp.input, level: tp.level, percent: percents[0], qty: levelQty[0], money: null, error: tp.error }];
-  state.tpLevels.forEach((l, i) => {
-    const v = exitView(
-      'tp',
-      { enabled: state.tp.enabled, unit: state.tp.unit, input: l.input, touched: true },
-      state,
-      entry,
-      levelQty[i + 1] || units,
-      balance,
-      spec,
-      false,
-      null,
-    );
-    tpLevels.push({ input: l.input, level: v.level, percent: percents[i + 1], qty: levelQty[i + 1], money: null, error: v.error });
-  });
-  // Money of each level uses its own quantity.
-  const tpMoneyParts = tpLevels.map((l) =>
-    l.level && !l.level.invalid && entry !== null
-      ? describeExit('tp', state.side, entry, levelCount === 1 ? units : l.qty, l.level.price, balance, spec).money
-      : null,
-  );
-  tpMoneyParts.forEach((m, i) => (tpLevels[i].money = m));
-  const tpValid = tp.enabled && tpMoneyParts.every((m) => m !== null);
-  const tpMoney = tpValid ? Math.round(tpMoneyParts.reduce<number>((a, m) => a + (m ?? 0), 0) * 100) / 100 : null;
-  const tpPercentLeft = Math.max(0, 100 - percents.reduce((a, b) => a + b, 0));
-  const avgTpDistance =
-    tpValid && entry !== null
-      ? weightedAverage(
-          tpLevels.map((l) => l.level!.distance),
-          levelCount === 1 ? [1] : tpLevels.map((l) => l.percent),
-        )
-      : null;
+  const partialsError =
+    partials.map((p) => p.qtyError ?? p.tp.error ?? p.sl.error).find((e) => e) ??
+    (state.partials.length && units > 0 && level1Qty < spec.minQty ? 'Level 1 has no shares left' : null);
 
-  const rr = sl.enabled && tp.enabled && sl.level && !sl.level.invalid && avgTpDistance !== null ? riskReward(sl.level.distance, avgTpDistance) : null;
+  // Level 1 first, then the partials; a level counts when its leg is set and valid.
+  const legs = (kind: ExitKind) => {
+    const main = (kind === 'sl' ? sl : tp).enabled ? (kind === 'sl' ? sl : tp).level : null;
+    return [main, ...partials.map((p) => p[kind].level)].filter((l): l is ExitLevel => !!l && !l.invalid);
+  };
+  const slLegs = legs('sl');
+  const tpLegs = legs('tp');
+  const moneyOf = (ls: ExitLevel[]) => (ls.length ? Math.round(ls.reduce((a, l) => a + l.money, 0) * 100) / 100 : null);
+  const slMoney = moneyOf(slLegs);
+  const tpMoney = moneyOf(tpLegs);
+  // Protected = shares with a stop loss; Level 1 counts when its SL is on and valid.
+  const protectedQty = (sl.enabled && sl.level && !sl.level.invalid ? level1Qty : 0) + partials.reduce((a, p, i) => a + (p.sl.level && !p.sl.level.invalid ? partialQtys[i] : 0), 0);
+  const protectedPercent = units > 0 ? Math.min(100, (protectedQty / units) * 100) : 0;
+  const everyLevelHasBoth = sl.enabled && tp.enabled && partials.every((p) => p.sl.level && p.tp.level);
+  const rr = everyLevelHasBoth && slMoney !== null && tpMoney !== null ? riskReward(Math.abs(slMoney), Math.abs(tpMoney)) : null;
 
   // 4. Expiry and session -------------------------------------------------------
   const gtdMs = state.gtdDate ? new Date(`${state.gtdDate}T${state.gtdTime || '00:00'}:00`).getTime() : undefined;
@@ -208,7 +199,6 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   // 5. Submit gate --------------------------------------------------------------
   let reason: DisabledReason | null = null;
   const needPrice = state.type !== 'market' && price?.value === null;
-  const levelsInvalid = tp.enabled && tpLevels.slice(1).some((l) => !l.level || l.level.invalid || !(l.qty > 0));
   if (!ready) reason = 'no-quote';
   else if (qty.needsStopLoss) reason = 'set-stop-loss';
   else if (needPrice && !(units > 0) && !qty.riskBelowOne) reason = 'enter-price-and-quantity';
@@ -217,10 +207,16 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
   else if (!(units > 0)) reason = 'enter-quantity';
   else if (units < spec.minQty) reason = 'below-min-qty';
   else if (price?.invalid && !rules.allowTriggeredStop) reason = 'invalid-price';
-  else if ((sl.enabled && (sl.error || !sl.level)) || (tp.enabled && (tp.error || !tp.level)) || levelsInvalid) reason = 'invalid-exit';
+  else if ((sl.enabled && (sl.error || !sl.level)) || (tp.enabled && (tp.error || !tp.level))) reason = 'invalid-exit';
+  else if (partialsError) reason = 'invalid-exit';
   else if (rules.blockOnMargin && exceedsMargin(qty.margin, ctx.availableFunds)) reason = 'not-enough-margin';
 
-  const tpLegs = tp.enabled && levelCount > 1 ? tpLevels.filter((l) => l.qty > 0 && l.level).map((l) => ({ price: l.level!.price, qty: l.qty })) : undefined;
+  const exitLevels: ExitLevelDraft[] | undefined = state.partials.length
+    ? [
+        { qty: level1Qty, takeProfit: tp.enabled && tp.level ? tp.level.price : undefined, stopLoss: sl.enabled && sl.level ? sl.level.price : undefined },
+        ...partials.map((p) => ({ qty: p.qty, takeProfit: p.tp.level?.price, stopLoss: p.sl.level?.price })),
+      ]
+    : undefined;
   const draft: OrderDraft | null =
     reason === null && entry !== null
       ? {
@@ -230,9 +226,9 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
           qty: units,
           limitPrice: state.type === 'limit' ? entry : undefined,
           stopPrice: state.type === 'stop' ? entry : undefined,
-          stopLoss: sl.enabled && sl.level ? sl.level.price : undefined,
-          takeProfit: tp.enabled && tp.level && !tpLegs ? tp.level.price : undefined,
-          takeProfits: tpLegs,
+          stopLoss: exitLevels ? undefined : sl.enabled && sl.level ? sl.level.price : undefined,
+          takeProfit: exitLevels ? undefined : tp.enabled && tp.level ? tp.level.price : undefined,
+          exitLevels,
           tif: state.tif,
           expiresAt: state.tif === 'gtd' ? (expiresAt ?? undefined) : undefined,
           activateAt: state.type === 'market' && opensAt !== null ? opensAt : undefined,
@@ -249,9 +245,12 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     qty,
     sl,
     tp,
-    tpLevels,
+    level1Qty,
+    partials,
+    partialsError,
+    protectedPercent,
+    slMoney,
     tpMoney,
-    tpPercentLeft,
     riskReward: rr,
     expiresAt,
     availableFunds: ctx.availableFunds,
@@ -259,7 +258,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     marginExceeded: units > 0 && exceedsMargin(qty.margin, ctx.availableFunds),
     canSubmit: draft !== null,
     disabledReason: reason,
-    disabledText: reason ? disabledText(reason, state, sl, tp) : null,
+    disabledText: reason ? disabledText(reason, state, sl, tp, partialsError) : null,
     draft,
     opensAt,
   };
@@ -275,6 +274,18 @@ export function priceValue(state: TicketState, quote: Quote | undefined, spec: S
     return price > 0 ? price : null;
   }
   return raw > 0 ? roundToTick(raw, spec.tickSize) : null;
+}
+
+/** "Stop loss must be below entry price" */
+function wrongSideText(kind: ExitKind, side: TicketState['side']): string {
+  return `${kind === 'sl' ? 'Stop loss' : 'Take profit'} must be ${(kind === 'sl') === (side === 'buy') ? 'below' : 'above'} entry price`;
+}
+
+/** Shares of a partial exit, rounded down to the step: typed in units, or in % of the position. */
+export function partialQty(p: PartialState, total: number, spec: SymbolSpec): number {
+  const n = parseNum(p.qtyInput);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return floorToStep(p.qtyUnit === 'percent' ? (total * n) / 100 : n, spec.qtyStep);
 }
 
 function exitLevel(kind: ExitKind, ex: ExitState, state: TicketState, entry: number, qty: number, balance: number, spec: SymbolSpec): ExitLevel | null {
@@ -351,7 +362,7 @@ function exitView(
   return { enabled: ex.enabled, unit: ex.unit, input, level: qty > 0 || !MONEY_UNITS.includes(ex.unit) ? level : null, error, ...ph };
 }
 
-function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, tp: ExitView): string {
+function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, tp: ExitView, partialsError: string | null): string {
   const verb = state.side === 'buy' ? 'buy' : 'sell';
   switch (reason) {
     case 'no-quote':
@@ -369,7 +380,7 @@ function disabledText(reason: DisabledReason, state: TicketState, sl: ExitView, 
     case 'invalid-price':
       return "Selected price isn't valid for this order type";
     case 'invalid-exit':
-      return sl.error ?? tp.error ?? 'Check exits';
+      return sl.error ?? tp.error ?? partialsError ?? 'Check exits';
     case 'risk-below-one':
       return 'Risk too small for 1 share';
     case 'not-enough-margin':

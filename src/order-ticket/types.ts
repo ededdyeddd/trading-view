@@ -30,27 +30,32 @@ export type TicketState = {
   gtdDate: string;
   /** GTD time as HH:MM ('' = end of day). */
   gtdTime: string;
-  /** Share of the position for TP 1, in % ('' = the default split). */
-  tpPercent: string;
-  /** TP 2 and TP 3 (same unit as TP 1). */
-  tpLevels: TpLevelState[];
+  /** Partial exits (Level 2, 3 …); Level 1 is the stop loss / take profit above and gets the remaining shares. */
+  partials: PartialState[];
   fillOutsideRth: boolean;
 };
 
 export type PriceUnit = 'price' | 'offset';
 
-export type TpLevelState = { input: string; percent: string };
+/** A leg of a partial exit: empty input = no leg. */
+export type PartialLeg = { unit: ExitUnit; input: string };
 
-export type TpLevelView = {
-  input: string;
+/** One partial exit (Level 2+): its shares (in units, or in % of the position) with its own take profit and stop loss. */
+export type PartialState = { qtyInput: string; qtyUnit: 'units' | 'percent'; tp: PartialLeg; sl: PartialLeg };
+
+export type PartialLegView = {
   level: ExitLevel | null;
+  error: string | null;
+};
+
+export type PartialView = {
+  /** Shares after rounding down. */
+  qty: number;
   /** Share of the position, %. */
   percent: number;
-  /** Quantity of this level after rounding down. */
-  qty: number;
-  /** Signed money of this level at its own quantity. */
-  money: number | null;
-  error: string | null;
+  qtyError: string | null;
+  tp: PartialLegView;
+  sl: PartialLegView;
 };
 
 export type ExitView = {
@@ -146,13 +151,18 @@ export type TicketView = {
   qty: QtyView;
   sl: ExitView;
   tp: ExitView;
-  /** All take-profit levels (TP 1 first). Only meaningful when tp.enabled. */
-  tpLevels: TpLevelView[];
-  /** Sum of TP money over levels. */
+  /** Level 1's shares: the quantity minus the partial exits. */
+  level1Qty: number;
+  /** Partial exits (Level 2+), in order. */
+  partials: PartialView[];
+  /** First problem of the partial exits (also blocks submit), else null. */
+  partialsError: string | null;
+  /** Share of the position covered by a stop loss, %. */
+  protectedPercent: number;
+  /** Total loss at the stops (negative) and profit at the take profits over all levels; null without any. */
+  slMoney: number | null;
   tpMoney: number | null;
-  /** % of the position not covered by TP levels. */
-  tpPercentLeft: number;
-  /** R:R uses the quantity-weighted TP. */
+  /** Total reward / total risk over all levels; null unless every level has both legs. */
   riskReward: number | null;
   expiresAt: number | null;
   availableFunds: number;

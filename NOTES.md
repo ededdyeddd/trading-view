@@ -219,3 +219,15 @@ Source: the Figma frames `4116:117479` (Market / Limit · Empty / Filled, unit-m
 - Figma "Limit · Filled" shows `Margin 398.00 · Tick 1.00 USD`; we show `Margin 398.00 USD · Tick 1.00 USD` (currency always, per the prompt).
 
 - **"Add level" renamed to "Add partial exit"** in the new panel (Figma 4111:97248). Current panel keeps "Add level".
+
+# Exit levels (partial exits), 10 Oct (new panel only)
+
+"Add partial exit" opens the **Exit levels** screen (reference: the screenshot of the production screen, adapted to our atoms). Decisions:
+
+- **Model.** Level 1 = the main SL / TP with the shares that remain; every extra level (`TicketState.partials`, up to 4) has its own shares (units, or % of the position via ⇆), take profit and stop loss, each in its own unit; an empty leg is not sent. This **replaces the earlier TP 2 / TP 3 with "% of position"** (`tpLevels`, `tpPercent`, `splitQty`, `weightedAverage`, `takeProfits` in the ticket; the engine keeps `takeProfits` for its old tests).
+- **Engine.** `OrderDraft.exitLevels` creates a TP (limit) and an SL (stop) leg per level, linked OCO inside the level (`Order.exitGroup`); a fill cancels only its own level's other leg. Before, one SL covered the whole position and shrank with every TP.
+- **Defaults.** A new level takes half of Level 1's shares (at least the minimum lot) and copies Level 1's TP / SL.
+- **Risk sizing** still uses Level 1's stop-loss distance for the whole quantity; partial stops do not change the share count (the real risk of the order is the sum of the SL money, shown in the summary).
+- **Totals.** Summary = sum of SL money and of TP money over the levels that have the leg. R:R = total reward / total risk, only when every level has both legs. Protected size = share of the position with a stop loss.
+- **Edits apply live** (chart lines follow, the main fields show Level 1's money); Discard / back / × restore the snapshot taken when the screen opened, Confirm keeps it. The main button then reads "Partial exits · N levels".
+- **Not built:** level 1 cannot be deleted (no trash on its row); the "Add level" link inside the screen keeps the label of the screenshot; per-leg ⇆ and the second dropdown on the right of TP / SL fields from the screenshot are replaced by our label menu + grey money.

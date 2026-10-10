@@ -15,7 +15,10 @@ import {
   formatExitInput,
   formatQtyInput,
   marketClosedText,
-  percentLeftText,
+  level1Parts,
+  levelHeadingText,
+  levelMenuValue,
+  orderTitleText,
   placedToastText,
   priceLabel,
   priceSwapLabel,
@@ -56,8 +59,7 @@ function st(p: Partial<TicketState> = {}): TicketState {
     tif: 'week',
     gtdDate: '',
     gtdTime: '',
-    tpPercent: '',
-    tpLevels: [],
+    partials: [],
     fillOutsideRth: false,
     ...p,
   };
@@ -383,36 +385,73 @@ describe('Block 4. Time in force', () => {
   });
 });
 
-describe('Block 5. Take-profit levels', () => {
-  it('3 levels: summary sums TP money; R:R by weighted TP; "12% left"', () => {
-    const s = st({
-      type: 'limit',
-      priceInput: '199.00',
-      qtyInput: '100',
-      sl: on('price', '195.00'),
-      tp: on('price', '205.00'),
-      tpPercent: '30',
-      tpLevels: [
-        { input: '207.00', percent: '30' },
-        { input: '209.00', percent: '28' },
-      ],
-    });
-    const v = nv(s);
-    expect(v.tpLevels.map((l) => l.qty)).toEqual([30, 30, 28]);
-    expect(v.tpMoney).toBe(30 * 6 + 30 * 8 + 28 * 10);
-    expect(summaryText(v)).toBe('SL −400.00 USD · TP +700.00 USD (3 levels)');
-    expect(percentLeftText(v)).toBe('12% left');
-    // weighted TP distance = (6·30 + 8·30 + 10·28) / 88
-    expect(v.riskReward).toBeCloseTo((6 * 30 + 8 * 30 + 10 * 28) / 88 / 4, 9);
-    expect(v.draft?.takeProfits).toEqual([
-      { price: 205, qty: 30 },
-      { price: 207, qty: 30 },
-      { price: 209, qty: 28 },
-    ]);
+describe('Block 5. Partial exits (Exit levels)', () => {
+  const base = st({ type: 'limit', priceInput: '199.00', qtyInput: '100', sl: on('price', '195.00'), tp: on('price', '207.00') });
+  const part = (qty: string, tp: string, sl: string, qtyUnit: 'units' | 'percent' = 'units') => ({
+    qtyInput: qty,
+    qtyUnit,
+    tp: { unit: 'price' as const, input: tp },
+    sl: { unit: 'price' as const, input: sl },
   });
-  it('default split is equal', () => {
-    const s = st({ qtyInput: '100', tp: on('price', '205.00'), tpLevels: [{ input: '207', percent: '' }] });
-    expect(nv(s).tpLevels.map((l) => l.percent)).toEqual([50, 50]);
+  it('Level 1 keeps the remaining shares; every level is valued at its own shares', () => {
+    const s = { ...base, partials: [part('40', '203.00', '197.00')] };
+    const v = nv(s);
+    expect([v.level1Qty, v.partials[0].qty, v.partials[0].percent]).toEqual([60, 40, 40]);
+    // main SL / TP now show money of Level 1's 60 shares
+    expect([v.sl.level?.money, v.tp.level?.money]).toEqual([-240, 480]);
+    expect([v.partials[0].sl.level?.money, v.partials[0].tp.level?.money]).toEqual([-80, 160]);
+    // totals over all levels: summary, R:R, protected size
+    expect([v.slMoney, v.tpMoney]).toEqual([-320, 640]);
+    expect(summaryText(v)).toBe('SL −320.00 USD · TP +640.00 USD');
+    expect(v.riskReward).toBeCloseTo(2, 9);
+    expect(v.protectedPercent).toBe(100);
+  });
+  it('shares in % of the position round down', () => {
+    const v = nv({ ...base, partials: [part('33.3', '203.00', '197.00', 'percent')] });
+    expect([v.partials[0].qty, v.level1Qty]).toEqual([33, 67]);
+  });
+  it('the draft carries one exit level per level: Level 1 first, then the partials', () => {
+    const v = nv({ ...base, partials: [part('40', '203.00', '197.00')] });
+    expect(v.draft?.exitLevels).toEqual([
+      { qty: 60, takeProfit: 207, stopLoss: 195 },
+      { qty: 40, takeProfit: 203, stopLoss: 197 },
+    ]);
+    expect(v.draft?.takeProfit).toBeUndefined();
+    expect(v.draft?.stopLoss).toBeUndefined();
+  });
+  it('a level without a stop loss lowers the protected size and hides R:R', () => {
+    const v = nv({ ...base, partials: [part('25', '203.00', '')] });
+    expect(v.protectedPercent).toBe(75);
+    expect(v.riskReward).toBeNull();
+    expect(v.partials[0].sl.level).toBeNull();
+    expect(v.draft?.exitLevels?.[1]).toEqual({ qty: 25, takeProfit: 203, stopLoss: undefined });
+  });
+  it('problems block submit with the reason on the button', () => {
+    const none = nv({ ...base, partials: [part('', '203.00', '197.00')] });
+    expect([none.partials[0].qtyError, none.partialsError, none.canSubmit]).toEqual(['Enter shares', 'Enter shares', false]);
+    expect(submitText({ ...base, partials: [part('', '203.00', '197.00')] }, none, AAPL)).toMatchObject({ secondary: 'Enter shares', disabled: true });
+    const wrong = nv({ ...base, partials: [part('10', '190.00', '197.00')] });
+    expect(wrong.partialsError).toBe('Take profit must be above entry price');
+    const all = nv({ ...base, partials: [part('100', '203.00', '197.00')] });
+    expect(all.partialsError).toBe('Level 1 has no shares left');
+    expect(all.canSubmit).toBe(false);
+  });
+  it('no partials: totals equal Level 1', () => {
+    const v = nv(base);
+    expect([v.slMoney, v.tpMoney, v.level1Qty, v.protectedPercent]).toEqual([-400, 800, 100, 100]);
+    expect(v.draft).toMatchObject({ takeProfit: 207, stopLoss: 195 });
+    expect(v.draft?.exitLevels).toBeUndefined();
+  });
+  it('Exit levels texts', () => {
+    const v = nv({ ...base, partials: [part('40', '203.00', '197.00')] });
+    expect(orderTitleText(base, v, AAPL)).toBe('Buy Limit 100 @ 199.00');
+    expect(levelHeadingText(1, 40)).toBe('Level 2 · 40.00%');
+    expect(level1Parts(v, AAPL)).toEqual([
+      { label: 'TP', text: '60 @ 207.00' },
+      { label: 'SL', text: '60 @ 195.00' },
+    ]);
+    expect(levelMenuValue('ticks', { unit: 'price', input: '203.00' }, v.partials[0].tp.level, true, AAPL)).toBe('400');
+    expect(levelMenuValue('money', { unit: 'price', input: '' }, null, true, AAPL)).toBe(DASH);
   });
 });
 

@@ -24,8 +24,7 @@ function state(p: Partial<TicketState> = {}): TicketState {
     tif: 'week',
     gtdDate: '',
     gtdTime: '',
-    tpPercent: '',
-    tpLevels: [],
+    partials: [],
     fillOutsideRth: false,
     ...p,
   };

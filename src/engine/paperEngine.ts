@@ -208,7 +208,14 @@ function applyFill(state: EngineState, order: Order, price: number, now: number)
   );
 
   // Bracket legs of the same entry: SL cancels every TP; a TP shrinks the SL by its quantity.
-  if (order.parentId && (order.role === 'sl' || order.role === 'tp')) {
+  if (order.exitGroup) {
+    // A partial exit: its TP and SL cancel each other; other levels are untouched.
+    for (const leg of s.orders.filter((o) => o.exitGroup === order.exitGroup && o.status === 'working' && o.id !== order.id)) {
+      const cancelled: Order = { ...leg, status: 'cancelled', updatedAt: now };
+      s = replaceOrder(s, cancelled);
+      events.push(ev('cancelled', now, leg.symbol, `Order cancelled: ${describe(leg)}`, cancelled));
+    }
+  } else if (order.parentId && (order.role === 'sl' || order.role === 'tp')) {
     for (const leg of s.orders.filter((o) => o.parentId === order.parentId && o.status === 'working' && o.id !== order.id)) {
       if (order.role === 'sl' || (leg.role === 'sl' && leg.qty - order.qty <= 1e-9)) {
         const cancelled: Order = { ...leg, status: 'cancelled', updatedAt: now };
@@ -224,7 +231,31 @@ function applyFill(state: EngineState, order: Order, price: number, now: number)
 
   // Entry with exits → create the bracket legs.
   const tps = order.takeProfits?.length ? order.takeProfits : order.takeProfit !== undefined ? [{ price: order.takeProfit, qty: order.qty }] : [];
-  if (order.role === 'entry' && (tps.length > 0 || order.stopLoss !== undefined)) {
+  if (order.role === 'entry' && order.exitLevels?.length) {
+    const legs: Order[] = [];
+    const base = {
+      symbol: order.symbol,
+      side: oppositeSide(order.side),
+      tif: order.tif,
+      expiresAt: null,
+      status: 'working' as const,
+      parentId: order.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    order.exitLevels.forEach((lv, i) => {
+      if (!(lv.qty > 0)) return;
+      const group = `${order.id}:${i}`;
+      let tpId: string | undefined;
+      let slId: string | undefined;
+      if (lv.takeProfit !== undefined) [tpId, s] = nextId(s);
+      if (lv.stopLoss !== undefined) [slId, s] = nextId(s);
+      if (tpId) legs.push({ ...base, id: tpId, qty: lv.qty, type: 'limit', limitPrice: lv.takeProfit, role: 'tp', exitGroup: group, ocoId: slId });
+      if (slId) legs.push({ ...base, id: slId, qty: lv.qty, type: 'stop', stopPrice: lv.stopLoss, role: 'sl', exitGroup: group, ocoId: tpId });
+    });
+    s = { ...s, orders: [...s.orders, ...legs] };
+    legs.forEach((l) => events.push(ev('placed', now, l.symbol, `Order placed: ${describe(l)}`, l)));
+  } else if (order.role === 'entry' && (tps.length > 0 || order.stopLoss !== undefined)) {
     const legs: Order[] = [];
     const exitSide = oppositeSide(order.side);
     const base = {
@@ -301,6 +332,13 @@ function validate(state: EngineState, draft: OrderDraft, quotes: Quotes, now: nu
     return `Take profit must be ${draft.side === 'buy' ? 'above' : 'below'} entry price`;
   if (draft.takeProfits?.some((t) => !((t.price - entry) * dir > 0))) return `Take profit must be ${draft.side === 'buy' ? 'above' : 'below'} entry price`;
   if (draft.takeProfits && draft.takeProfits.reduce((a, t) => a + t.qty, 0) > draft.qty + 1e-9) return 'Take profit levels exceed the position size';
+  if (draft.exitLevels) {
+    if (draft.exitLevels.reduce((a, l) => a + l.qty, 0) > draft.qty + 1e-9) return 'Exit levels exceed the position size';
+    for (const l of draft.exitLevels) {
+      if (l.stopLoss !== undefined && !((entry - l.stopLoss) * dir > 0)) return `Stop loss must be ${draft.side === 'buy' ? 'below' : 'above'} entry price`;
+      if (l.takeProfit !== undefined && !((l.takeProfit - entry) * dir > 0)) return `Take profit must be ${draft.side === 'buy' ? 'above' : 'below'} entry price`;
+    }
+  }
 
   const required = incrementalMargin(state, draft.symbol, draft.side, draft.qty, entry);
   const available = accountSummary(state, quotes).availableFunds;
@@ -329,6 +367,7 @@ export function placeOrder(state: EngineState, draft: OrderDraft, quotes: Quotes
     takeProfit: draft.takeProfit,
     stopLoss: draft.stopLoss,
     takeProfits: draft.takeProfits,
+    exitLevels: draft.exitLevels,
     activateAt: draft.type === 'market' ? draft.activateAt : undefined,
     tif: draft.tif,
     expiresAt: draft.type === 'market' ? null : computeExpiry(draft.tif, now, draft.expiresAt),
@@ -423,6 +462,10 @@ export function modifyOrder(state: EngineState, id: string, patch: OrderPatch, q
     const delta = newPx - oldPx;
     if (o.takeProfit !== undefined && patch.takeProfit === undefined) next.takeProfit = roundToTick(o.takeProfit + delta, spec.tickSize);
     if (o.stopLoss !== undefined && patch.stopLoss === undefined) next.stopLoss = roundToTick(o.stopLoss + delta, spec.tickSize);
+    if (o.exitLevels) {
+      const shift = (p: number | undefined) => (p === undefined ? undefined : roundToTick(p + delta, spec.tickSize));
+      next.exitLevels = o.exitLevels.map((l) => ({ ...l, takeProfit: shift(l.takeProfit), stopLoss: shift(l.stopLoss) }));
+    }
   }
   const fail = (msg: string): EngineResult => ({ state, events: [ev('rejected', now, o.symbol, `Modify rejected: ${msg}`, o)] });
   if (!(next.qty >= spec.minQty) || Math.abs(floorToStep(next.qty, spec.qtyStep) - next.qty) > 1e-9) return fail('invalid quantity');

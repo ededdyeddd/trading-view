@@ -347,14 +347,7 @@ export function exitText(kind: ExitKind, state: TicketState, view: TicketView, s
     const t = lvl && !lvl.invalid ? levelText(kind, ex.unit, lvl, state.side, spec, view.qty.units > 0) : null;
     return { suffix: '', right: t?.right ?? '', rightTone: 'muted', caption: null, captionTone: 'neutral' };
   }
-  // With several TP levels, TP 1's money is its own share.
-  const money = kind === 'tp' && view.tpLevels.length > 1 && ex.level && !ex.level.invalid ? tpLevelMoney(view, 0) : undefined;
-  return levelText(kind, ex.unit, ex.level, state.side, spec, view.qty.units > 0, money);
-}
-
-/** Money of TP level i at its own quantity (levels > 1). */
-export function tpLevelMoney(view: TicketView, i: number): number | undefined {
-  return view.tpLevels[i]?.money ?? undefined;
+  return levelText(kind, ex.unit, ex.level, state.side, spec, view.qty.units > 0);
 }
 
 /** How the typed exit value reads when the field is not focused. */
@@ -398,6 +391,41 @@ export function exitMenuValue(kind: ExitKind, unit: ExitUnit, state: TicketState
 }
 
 /**
+ * Live value of a partial exit's leg in a unit, for its label menu: what was typed for the selected unit, the rest
+ * recalculated from the level; "—" without a level (empty leg, no entry price) and for money units without shares.
+ */
+export function levelMenuValue(unit: ExitUnit, typed: { unit: ExitUnit; input: string }, lvl: ExitLevel | null, hasQty: boolean, spec: SymbolSpec): string {
+  const n = parseNum(typed.input);
+  if (unit === typed.unit && Number.isFinite(n)) return exitValueText(unit, n, spec);
+  if (!lvl || lvl.invalid) return DASH;
+  if ((unit === 'money' || unit === 'balancePercent') && !hasQty) return DASH;
+  const v = { price: lvl.price, ticks: lvl.ticks, percent: lvl.percent, money: lvl.money, balancePercent: lvl.balancePercent }[unit];
+  return exitValueText(unit, v, spec);
+}
+
+/** "Buy Limit 100 @ 199.00" — the order the Exit levels screen belongs to. */
+export function orderTitleText(state: TicketState, view: TicketView, spec: SymbolSpec): string {
+  const type = state.type === 'market' ? 'Market' : state.type === 'limit' ? 'Limit' : 'Stop';
+  const side = state.side === 'buy' ? 'Buy' : 'Sell';
+  const px = view.entry !== null ? ` @ ${fmtPrice(view.entry, spec)}` : '';
+  return `${side} ${type} ${fmtQty(view.qty.units, spec)}${px}`;
+}
+
+/** "Level 2 · 20.00%". */
+export function levelHeadingText(index: number, percent: number): string {
+  return `Level ${index + 1} · ${fmtNumber(percent, 2)}%`;
+}
+
+/** Parts of the Level 1 summary row: "TP 60 @ 205.00" · "SL 60 @ 199.00" (a leg that is off is left out). */
+export function level1Parts(view: TicketView, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
+  const qty = fmtQty(view.level1Qty, spec);
+  const parts: { label: 'TP' | 'SL'; text: string }[] = [];
+  if (view.tp.enabled && view.tp.level && !view.tp.level.invalid) parts.push({ label: 'TP', text: `${qty} @ ${fmtPrice(view.tp.level.price, spec)}` });
+  if (view.sl.enabled && view.sl.level && !view.sl.level.invalid) parts.push({ label: 'SL', text: `${qty} @ ${fmtPrice(view.sl.level.price, spec)}` });
+  return parts;
+}
+
+/**
  * While quantity is sized by risk, the stop loss cannot be set in money units: the risk sets the quantity, not the level.
  * SL shows Risk USD / Risk % balance disabled with this reason. The TP menu does not change.
  */
@@ -428,10 +456,6 @@ export function exitUnitInfo(kind: ExitKind, unit: ExitUnit): string | undefined
   }
 }
 
-export function percentLeftText(view: TicketView): string | null {
-  return view.tpLevels.length > 1 && view.tpPercentLeft > 0 ? `${fmtNumber(view.tpPercentLeft, 0)}% left` : null;
-}
-
 // ---------------------------------------------------------------------------
 // Risk / Reward, summary, submit, time in force, session
 // ---------------------------------------------------------------------------
@@ -440,25 +464,16 @@ export function riskRewardText(rr: number): string {
   return `1 : ${fmtNumber(rr, 2)}`;
 }
 
-export function summaryText(view: TicketView): string | null {
-  const parts: string[] = [];
-  if (view.sl.enabled && view.sl.level && !view.sl.level.invalid) parts.push(`SL ${signedMoney(view.sl.level.money)}`);
-  if (view.tp.enabled && view.tpMoney !== null) {
-    const n = view.tpLevels.length;
-    parts.push(`TP ${signedMoney(view.tpMoney)}${n > 1 ? ` (${n} levels)` : ''}`);
-  }
-  return parts.length ? parts.join(' · ') : null;
+export function summaryParts(view: TicketView): { label: 'SL' | 'TP'; amount: string }[] | null {
+  const parts: { label: 'SL' | 'TP'; amount: string }[] = [];
+  if (view.slMoney !== null) parts.push({ label: 'SL', amount: signedMoney(view.slMoney) });
+  if (view.tpMoney !== null) parts.push({ label: 'TP', amount: signedMoney(view.tpMoney) });
+  return parts.length ? parts : null;
 }
 
-/** Parts of the summary above the button, for the coloured SL / TP labels. */
-export function summaryParts(view: TicketView): { label: 'SL' | 'TP'; amount: string; note?: string }[] | null {
-  const parts: { label: 'SL' | 'TP'; amount: string; note?: string }[] = [];
-  if (view.sl.enabled && view.sl.level && !view.sl.level.invalid) parts.push({ label: 'SL', amount: signedMoney(view.sl.level.money) });
-  if (view.tp.enabled && view.tpMoney !== null) {
-    const n = view.tpLevels.length;
-    parts.push({ label: 'TP', amount: signedMoney(view.tpMoney), note: n > 1 ? `(${n} levels)` : undefined });
-  }
-  return parts.length ? parts : null;
+/** Plain-text summary: "SL −407.00 USD · TP +943.00 USD" (totals over all levels). */
+export function summaryText(view: TicketView): string | null {
+  return summaryParts(view)?.map((p) => `${p.label} ${p.amount}`).join(' · ') ?? null;
 }
 
 export type SubmitText = { primary: string; secondary: string; disabled: boolean; reason: string | null };
@@ -488,9 +503,7 @@ export function submitText(state: TicketState, view: TicketView, spec: SymbolSpe
     if (!ex.level) return block(`Enter ${exitTitle(kind).toLowerCase()}`);
     if (ex.level.invalid) return block(exitWrongSideText(kind, state.side));
   }
-  if (view.tp.enabled && view.tpLevels.slice(1).some((l) => !l.level)) return block('Enter take profit');
-  if (view.tp.enabled && view.tpLevels.slice(1).some((l) => l.level?.invalid)) return block(exitWrongSideText('tp', state.side));
-  if (view.tp.enabled && view.tpLevels.some((l) => !(l.qty > 0))) return block('Set % of position for each level');
+  if (view.partialsError) return block(view.partialsError);
   if (view.marginExceeded) return block('Not enough margin');
   if (!view.canSubmit || !view.draft) return block(view.disabledText ?? 'Check the order');
   const qty = `${fmtQty(view.qty.units, spec)} ${spec.symbol}`;

@@ -6,7 +6,8 @@ import { describeExit, marketRef, roundToTick } from '../../lib/orderMath';
 import { exitInputText, useOrderTicket, useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
 import type { ChartHandle } from './CandleChart';
 
-type LineId = 'entry' | 'sl' | `tp${number}`;
+/** 'sl' / 'tp' = Level 1; `p${n}sl` / `p${n}tp` = the n-th partial exit (n from 0). */
+type LineId = 'entry' | 'sl' | 'tp' | `p${number}sl` | `p${number}tp`;
 type LineSpec = { id: LineId; price: number; color: string; title: string };
 
 const HIT_PX = 6;
@@ -36,19 +37,14 @@ function linesFor(ticket: OrderTicket): LineSpec[] {
   if (view.sl.enabled && view.sl.level && !view.sl.level.invalid) {
     out.push({ id: 'sl', price: view.sl.level.price, color: cssVar('--color-red'), title: `SL${qty > 0 ? ` ${signedUsd(view.sl.level.money)}` : ''}` });
   }
-  if (view.tp.enabled) {
-    view.tpLevels.forEach((l, i) => {
-      if (!l.level || l.level.invalid) return;
-      const money = view.tpLevels.length > 1 ? l.money : l.level.money;
-      const label = view.tpLevels.length > 1 ? `TP${i + 1}` : 'TP';
-      out.push({
-        id: `tp${i}`,
-        price: l.level.price,
-        color: cssVar('--color-green'),
-        title: `${label}${qty > 0 && money !== null ? ` ${signedUsd(money)}` : ''}`,
-      });
-    });
+  if (view.tp.enabled && view.tp.level && !view.tp.level.invalid) {
+    out.push({ id: 'tp', price: view.tp.level.price, color: cssVar('--color-green'), title: `TP${qty > 0 ? ` ${signedUsd(view.tp.level.money)}` : ''}` });
   }
+  view.partials.forEach((p, i) => {
+    const n = i + 2;
+    if (p.sl.level && !p.sl.level.invalid) out.push({ id: `p${i}sl`, price: p.sl.level.price, color: cssVar('--color-red'), title: `SL${n} ${signedUsd(p.sl.level.money)}` });
+    if (p.tp.level && !p.tp.level.invalid) out.push({ id: `p${i}tp`, price: p.tp.level.price, color: cssVar('--color-green'), title: `TP${n} ${signedUsd(p.tp.level.money)}` });
+  });
   return out;
 }
 
@@ -140,14 +136,14 @@ export function OrderLines({ handle }: { handle: ChartHandle | null }) {
         return;
       }
       if (view.entry === null) return;
-      const kind = id === 'sl' ? 'sl' : 'tp';
-      const qty = view.qty.units > 0 ? view.qty.units : 1;
-      const level = describeExit(kind, state.side, view.entry, qty, price, tk.account.balance, spec);
+      const partial = /^p(\d+)(sl|tp)$/.exec(id);
+      const kind: 'sl' | 'tp' = partial ? (partial[2] as 'sl' | 'tp') : id === 'sl' ? 'sl' : 'tp';
+      const index = partial ? Number(partial[1]) : -1;
+      const qty = index >= 0 ? view.partials[index]?.qty : view.level1Qty;
+      const level = describeExit(kind, state.side, view.entry, qty > 0 ? qty : 1, price, tk.account.balance, spec);
       if (level.invalid) return; // never drag a level across the entry
-      const text = exitInputText(level, state[kind].unit, spec);
-      const index = id === 'sl' ? 0 : Number(id.slice(2));
-      if (kind === 'tp' && index > 0) store.setTpLevelInput(index, text);
-      else store.setExitInput(kind, text);
+      if (index >= 0) store.setPartialLeg(index, kind, exitInputText(level, state.partials[index][kind].unit, spec));
+      else store.setExitInput(kind, exitInputText(level, state[kind].unit, spec));
     };
 
     const onDown = (e: MouseEvent) => {

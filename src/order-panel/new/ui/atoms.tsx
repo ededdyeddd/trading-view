@@ -608,22 +608,42 @@ export function SettingsRow({ title, value, chevron, onClick, testId }: Settings
 // ---------------------------------------------------------------------------
 
 /** "+ Add partial exit" text button; with `tooltip` and no handler it shows the tooltip instead ("Coming soon"). */
-export function TextButton({ children, tooltip, onClick }: { children: ReactNode; tooltip?: string; onClick?: () => void }) {
+export function TextButton({
+  children,
+  tooltip,
+  onClick,
+  disabled,
+  disabledReason,
+  testId = 'nt-add-level',
+  plus = true,
+}: {
+  children: ReactNode;
+  tooltip?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  /** Hover text of a disabled button. */
+  disabledReason?: string;
+  testId?: string;
+  plus?: boolean;
+}) {
   const [tip, setTip] = useState(false);
   return (
     <button
       type="button"
-      className={s.textButton}
+      className={cx(s.textButton, disabled && s.textButtonDisabled)}
+      aria-disabled={disabled || undefined}
+      title={disabled ? disabledReason : undefined}
       onClick={() => {
+        if (disabled) return;
         if (onClick) return onClick();
         setTip(true);
         setTimeout(() => setTip(false), 1500);
       }}
       onMouseEnter={() => tooltip && setTip(true)}
       onMouseLeave={() => setTip(false)}
-      data-testid="nt-add-level"
+      data-testid={testId}
     >
-      <Plus size={18} strokeWidth={1.5} />
+      {plus && <Plus size={18} strokeWidth={1.5} />}
       {children}
       {tip && tooltip && <span className={s.tooltip}>{tooltip}</span>}
     </button>
@@ -661,7 +681,7 @@ export function SubmitButton({ side, primary, secondary, disabled, loading, onCl
   );
 }
 
-export type SummaryPart = { label: 'SL' | 'TP'; amount: string; note?: string };
+export type SummaryPart = { label: 'SL' | 'TP'; amount: string };
 
 /** Pinned footer: optional summary ("SL −407.00 USD · TP +943.00 USD", coloured labels) wrapping the submit button. */
 export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null; children: ReactNode }) {
@@ -674,7 +694,6 @@ export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null;
             {i > 0 && <span className={s.summarySep}> · </span>}
             <span className={p.label === 'SL' ? s.summaryLabelSl : s.summaryLabelTp}>{p.label}</span>
             <span className={s.summaryAmount}> {p.amount}</span>
-            {p.note && <span className={s.summaryAmount}> {p.note}</span>}
           </span>
         ))}
       </div>

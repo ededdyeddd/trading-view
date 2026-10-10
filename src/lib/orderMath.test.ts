@@ -4,13 +4,10 @@ import {
   checkPrice,
   convertRisk,
   defaultRiskInput,
-  defaultLevelPercents,
   describeExit,
   maxQtyForMargin,
   priceFromOffset,
   riskPerUnit,
-  splitQty,
-  weightedAverage,
   floorToStep,
   marginFor,
   offsetTicks,
@@ -207,15 +204,6 @@ describe('step 2b formulas', () => {
   });
   it('max shares by margin: floor(99,953.90 / (201.57 × 2%)) = floor(24,793.84) = 24,793 (prompt rounds to 24,794)', () => {
     expect(maxQtyForMargin(BALANCE, ENTRY, AAPL)).toBe(24_793);
-  });
-  it('TP levels split the position and average by weight', () => {
-    expect(defaultLevelPercents(1)).toEqual([100]);
-    expect(defaultLevelPercents(2)).toEqual([50, 50]);
-    expect(defaultLevelPercents(3)).toEqual([33, 33, 34]);
-    expect(splitQty(100, [33, 33, 34], 1)).toEqual([33, 33, 34]);
-    expect(splitQty(10, [50, 38], 1)).toEqual([5, 3]);
-    expect(weightedAverage([205, 207, 209], [33, 33, 34])).toBeCloseTo((205 * 33 + 207 * 33 + 209 * 34) / 100, 9);
-    expect(weightedAverage([1], [0])).toBeNull();
   });
 });
 

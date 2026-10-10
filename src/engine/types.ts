@@ -6,6 +6,9 @@ export type TimeInForce = 'day' | 'week' | 'month' | 'gtd';
  * What every order panel variant submits. Prices are absolute; the panel is responsible
  * for converting any user unit (ticks, %, USD…) into prices and quantity via orderMath.
  */
+/** One partial exit: its own quantity with its own take profit and stop loss (each leg optional). */
+export type ExitLevelDraft = { qty: number; takeProfit?: number; stopLoss?: number };
+
 export type OrderDraft = {
   symbol: string;
   side: Side;
@@ -20,6 +23,11 @@ export type OrderDraft = {
   stopLoss?: number;
   /** Several take-profit levels (each with its own quantity). Overrides `takeProfit` when present. */
   takeProfits?: { price: number; qty: number }[];
+  /**
+   * Partial exits, each a TP / SL pair with its own quantity (one-cancels-other per level; the quantities may add up to
+   * less than `qty`). Overrides `takeProfit`, `stopLoss` and `takeProfits` when present.
+   */
+  exitLevels?: ExitLevelDraft[];
   /** Market order queued until the session opens (ms). */
   activateAt?: number;
   tif: TimeInForce;
@@ -41,6 +49,9 @@ export type Order = {
   takeProfit?: number;
   stopLoss?: number;
   takeProfits?: { price: number; qty: number }[];
+  exitLevels?: ExitLevelDraft[];
+  /** Bracket legs of one partial exit share a group: only they cancel / shrink each other. */
+  exitGroup?: string;
   /** Queued market order: executes at the first quote after this time. */
   activateAt?: number;
   tif: TimeInForce;

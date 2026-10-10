@@ -377,24 +377,6 @@ export function maxQtyForMargin(availableFunds: number, price: number, spec: Spe
   return floorToStep(availableFunds / per + 1e-9, spec.qtyStep);
 }
 
-/** Default "% of position" split when there are n take-profit levels: 100 · 50/50 · 33/33/34. */
-export function defaultLevelPercents(n: number): number[] {
-  const base = Math.floor(100 / n);
-  return Array.from({ length: n }, (_, i) => (i === n - 1 ? 100 - base * (n - 1) : base));
-}
-
-/** Quantity of each level from its share of the position, rounded down to the step. */
-export function splitQty(qty: number, percents: number[], qtyStep: number): number[] {
-  return percents.map((p) => floorToStep((qty * Math.max(0, p)) / 100, qtyStep));
-}
-
-/** Weighted average of prices by weights (null when weights sum to 0). */
-export function weightedAverage(prices: number[], weights: number[]): number | null {
-  const w = weights.reduce((a, b) => a + b, 0);
-  if (!(w > 0)) return null;
-  return prices.reduce((a, p, i) => a + p * weights[i], 0) / w;
-}
-
 /** Share of the balance a new risk input starts with (Risk USD is rounded to whole USD). */
 export const DEFAULT_RISK_PCT = 1;
 

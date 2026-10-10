@@ -168,35 +168,8 @@
 }
 
 /* TP levels 2–3 */
-.level {
-  padding-top: 12px;
-}
 
-.levelHeader {
-  height: 26px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
 
-.levelTitle {
-  font-size: 14px;
-  line-height: 18px;
-  letter-spacing: var(--nt-tracking-14);
-  color: var(--nt-text-secondary);
-}
 
-.levelRow {
-  display: flex;
-  gap: 8px;
-}
 
-.levelValue {
-  flex: 1;
-  min-width: 0;
-}
 
-.percent {
-  width: 76px;
-  flex: none;
-}

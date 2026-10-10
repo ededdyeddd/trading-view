@@ -7,9 +7,8 @@ import type { EngineEvent, TimeInForce } from '../engine/types';
 import { offsetInput, parseNum, priceInput } from '../lib/format';
 import {
   convertRisk,
-  defaultLevelPercents,
   defaultRiskInput,
-  describeExit,
+  floorToStep,
   marketRef,
   type ExitKind,
   type ExitUnit,
@@ -27,7 +26,10 @@ import { CURRENT_RULES, NEW_RULES, deriveTicket, exitInputText } from './deriveT
 import { PRICE_COMMIT_MS, evaluatePriceStatus, statusPatch, submitCheck } from './priceField';
 
 export { NEW_EXIT_DEFAULT_PERCENT, exitInputText } from './deriveTicket';
-import type { ExitState, PriceUnit, TicketState, TicketView } from './types';
+import type { ExitState, PartialState, PriceUnit, TicketState, TicketView } from './types';
+
+/** Level 1 plus this many partial exits. */
+export const MAX_PARTIALS = 4;
 
 function defaultQty(spec: SymbolSpec): string {
   if (spec.assetClass === 'crypto') return spec.symbol.startsWith('BTC') ? '0.01' : '0.1';
@@ -52,8 +54,7 @@ function initialState(symbol: string, variant: PanelVariant = getVariant()): Tic
       tif: 'week',
       gtdDate: '',
       gtdTime: '',
-      tpPercent: '',
-      tpLevels: [],
+      partials: [],
       fillOutsideRth: false,
     };
   }
@@ -71,8 +72,7 @@ function initialState(symbol: string, variant: PanelVariant = getVariant()): Tic
     tif: 'week',
     gtdDate: '',
     gtdTime: '',
-    tpPercent: '',
-    tpLevels: [],
+    partials: [],
     fillOutsideRth: false,
   };
 }
@@ -93,12 +93,16 @@ type Actions = {
   checkPriceOnSubmit: () => boolean;
   /** ⇆ in the Limit / Stop price field: switch between an absolute price and a signed offset from Ask / Bid; keeps the order price. */
   setPriceUnit: (unit: PriceUnit, view: TicketView) => void;
-  /** Add TP 2 / TP 3 (max 3 levels): levels share the position equally. */
-  addTpLevel: (view: TicketView) => void;
-  removeTpLevel: (index: number) => void;
-  /** index 0 = TP 1. Input over what is left is capped. */
-  setTpPercent: (index: number, text: string) => void;
-  setTpLevelInput: (index: number, text: string) => void;
+  /** Partial exits (Level 2+). A new level takes half of Level 1's shares and starts with Level 1's take profit / stop loss. */
+  addPartial: (view: TicketView) => void;
+  removePartial: (index: number) => void;
+  /** Restores a snapshot (Discard in the Exit levels panel). */
+  setPartials: (partials: PartialState[]) => void;
+  setPartialQty: (index: number, text: string) => void;
+  /** Shares ⇆ % of the position; keeps the quantity. */
+  setPartialQtyUnit: (index: number, unit: PartialState['qtyUnit'], view: TicketView) => void;
+  setPartialLeg: (index: number, kind: ExitKind, text: string) => void;
+  setPartialLegUnit: (index: number, kind: ExitKind, unit: ExitUnit, view: TicketView) => void;
   setGtdTime: (time: string) => void;
   /** Replace the whole TIF selection (GTD with date and time). */
   setGtd: (date: string, time: string) => void;
@@ -135,10 +139,6 @@ function cancelPriceCommit() {
   commitTimer = null;
 }
 
-function accountBalance(): number {
-  return useTradingStore.getState().engine.balance;
-}
-
 export const useTicketStore = create<TicketState & Actions>((set, get) => ({
   ...initialState(useUiStore.getState().symbol),
 
@@ -154,8 +154,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
         qtyInput: '',
         sl: { ...s.sl, enabled: false, input: '' },
         tp: { ...s.tp, enabled: false, input: '' },
-        tpLevels: [],
-        tpPercent: '',
+        partials: [],
       }));
       cancelPriceCommit();
       return;
@@ -193,54 +192,45 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     set({ priceUnit: unit, priceInput: text });
     logEvent('unit_change', { field: 'price', unit });
   },
-  addTpLevel: (view) => {
+  addPartial: (view) => {
     const s = get();
-    if (s.tpLevels.length >= 2) return;
-    const n = s.tpLevels.length + 2;
-    const pct = defaultLevelPercents(n);
-    // A new level starts one more TP-distance further out than the last one.
-    const last = view.tpLevels[view.tpLevels.length - 1]?.level;
-    let input = '';
-    if (last && view.entry !== null && !last.invalid) {
-      const spec = getSpec(s.symbol);
-      const step = last.price - view.entry;
-      const next = describeExit(
-        'tp',
-        s.side,
-        view.entry,
-        1,
-        Math.round((last.price + step / Math.max(1, n - 1)) / spec.tickSize) * spec.tickSize,
-        accountBalance(),
-        spec,
-      );
-      input = exitInputText(next, s.tp.unit, spec);
-    }
-    set({
-      tpPercent: String(pct[0]),
-      tpLevels: [...s.tpLevels.map((l, i) => ({ ...l, percent: String(pct[i + 1]) })), { input, percent: String(pct[n - 1]) }],
-    });
-    logEvent('field_change', { field: 'tpLevels', value: n });
+    if (s.partials.length >= MAX_PARTIALS) return;
+    const spec = getSpec(s.symbol);
+    const half = Math.max(spec.minQty, floorToStep(view.level1Qty / 2, spec.qtyStep));
+    const leg = (kind: ExitKind) => ({ unit: s[kind].unit, input: s[kind].enabled ? view[kind].input : '' });
+    set({ partials: [...s.partials, { qtyInput: half.toFixed(qtyPrecision(spec)), qtyUnit: 'units', tp: leg('tp'), sl: leg('sl') }] });
+    logEvent('field_change', { field: 'partials', value: s.partials.length + 1 });
   },
-  removeTpLevel: (index) => {
+  removePartial: (index) => {
+    set((s) => ({ partials: s.partials.filter((_, i) => i !== index) }));
+    logEvent('field_change', { field: 'partials', value: get().partials.length });
+  },
+  setPartials: (partials) => set({ partials }),
+  setPartialQty: (index, text) => {
+    set((s) => ({ partials: s.partials.map((p, i) => (i === index ? { ...p, qtyInput: text } : p)) }));
+    logFieldChange(`partial${index + 2}Qty`, text);
+  },
+  setPartialQtyUnit: (index, unit, view) => {
     const s = get();
-    const levels = s.tpLevels.filter((_, i) => i !== index - 1);
-    const pct = defaultLevelPercents(levels.length + 1);
-    set({ tpLevels: levels.map((l, i) => ({ ...l, percent: String(pct[i + 1]) })), tpPercent: levels.length ? String(pct[0]) : '' });
-    logEvent('field_change', { field: 'tpLevels', value: levels.length + 1 });
+    const p = s.partials[index];
+    if (!p || p.qtyUnit === unit) return;
+    const v = view.partials[index];
+    const spec = getSpec(s.symbol);
+    const text = !v || !(v.qty > 0) ? '' : unit === 'units' ? v.qty.toFixed(qtyPrecision(spec)) : v.percent.toFixed(2);
+    set({ partials: s.partials.map((x, i) => (i === index ? { ...x, qtyUnit: unit, qtyInput: text } : x)) });
   },
-  setTpPercent: (index, text) => {
+  setPartialLeg: (index, kind, text) => {
+    set((s) => ({ partials: s.partials.map((p, i) => (i === index ? { ...p, [kind]: { ...p[kind], input: text } } : p)) }));
+    logFieldChange(`partial${index + 2}${kind}`, text);
+  },
+  setPartialLegUnit: (index, kind, unit, view) => {
     const s = get();
-    const all = [s.tpPercent, ...s.tpLevels.map((l) => l.percent)];
-    const others = all.reduce((a, p, i) => (i === index ? a : a + (Number(p) || 0)), 0);
-    let v = text.replace(/[^\d]/g, '');
-    if (v !== '' && Number(v) > 100 - others) v = String(Math.max(0, 100 - others));
-    if (index === 0) set({ tpPercent: v });
-    else set({ tpLevels: s.tpLevels.map((l, i) => (i === index - 1 ? { ...l, percent: v } : l)) });
-    logFieldChange(`tpPercent${index + 1}`, v);
-  },
-  setTpLevelInput: (index, text) => {
-    set((s) => ({ tpLevels: s.tpLevels.map((l, i) => (i === index - 1 ? { ...l, input: text } : l)) }));
-    logFieldChange(`tp${index + 1}`, text);
+    const p = s.partials[index];
+    if (!p || p[kind].unit === unit) return;
+    const lvl = view.partials[index]?.[kind].level;
+    const text = lvl && !lvl.invalid ? exitInputText(lvl, unit, getSpec(s.symbol)) : '';
+    set({ partials: s.partials.map((x, i) => (i === index ? { ...x, [kind]: { unit, input: text } } : x)) });
+    logEvent('unit_change', { field: `partial${index + 2}${kind}`, unit });
   },
   setGtdTime: (gtdTime) => {
     set({ gtdTime });
@@ -329,10 +319,9 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     let input = s[kind].input;
     if (getVariant() === 'new' && enabled && input.trim() === '') input = view?.[kind].placeholder ?? '';
     set({ [kind]: { ...s[kind], enabled, input, touched: true } } as Partial<TicketState>);
-    if (kind === 'tp' && !enabled) set({ tpLevels: [], tpPercent: '' });
     logEvent('toggle_change', { field: kind, enabled });
   },
-  clearQty: () => set({ qtyInput: '' }),
+  clearQty: () => set({ qtyInput: '', partials: [] }),
   setExitInput: (kind, text) => {
     set((s) => ({ [kind]: { ...s[kind], input: text, touched: true } }) as Partial<TicketState>);
     logFieldChange(kind, text);
@@ -345,14 +334,6 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     const spec = getSpec(s.symbol);
     const text = lvl && !lvl.invalid ? exitInputText(lvl, unit, spec) : '';
     set({ [kind]: { ...ex, unit, input: text, touched: true } } as Partial<TicketState>);
-    if (kind === 'tp' && s.tpLevels.length) {
-      set({
-        tpLevels: s.tpLevels.map((l, i) => {
-          const lv = view.tpLevels[i + 1]?.level;
-          return { ...l, input: lv && !lv.invalid ? exitInputText(lv, unit, spec) : '' };
-        }),
-      });
-    }
     logEvent('unit_change', { field: kind, unit });
   },
   setTif: (tif) => {

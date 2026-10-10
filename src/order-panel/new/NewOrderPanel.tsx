@@ -1,15 +1,17 @@
 import { Ellipsis, Grid2x2Plus, X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { logEvent } from '../../analytics/eventLog';
 import { getSpec, pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber, fmtPrice, fmtQty } from '../../lib/format';
 import type { ExitKind, OrderType } from '../../lib/orderMath';
 import { useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
+import type { PartialState } from '../../order-ticket/types';
 import { now, useTradingStore } from '../../store/tradingStore';
 import { useUiStore } from '../../store/uiStore';
 import { MenuItem, Popover } from '../../ui/Popover';
 import { Checkbox } from '../../ui/Switch';
 import { SymbolLogo } from '../../ui/SymbolLogo';
+import { ExitLevelsPanel } from './ExitLevelsPanel';
 import styles from './NewOrderPanel.module.css';
 import {
   QTY_UNITS,
@@ -25,9 +27,7 @@ import {
   fillToastText,
   formatExitInput,
   formatQtyInput,
-  levelText,
   marketClosedText,
-  percentLeftText,
   placedToastText,
   priceLabel,
   priceSwapLabel,
@@ -49,7 +49,6 @@ import {
   ExitLevel,
   FieldCaption,
   FieldLabelMenu,
-  IconButton,
   InfoRow,
   OrderSummary,
   SegmentedControl,
@@ -82,6 +81,9 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const { state, view, slowView, labelQuote, spec, quote } = ticket;
   const t = useTicketStore.getState();
   const [tab, setTab] = useState<'order' | 'dom'>('order');
+  const [screen, setScreen] = useState<'order' | 'levels'>('order');
+  /** Partial exits as they were when the Exit levels screen opened (Discard restores them). */
+  const [partialsSnapshot, setPartialsSnapshot] = useState<PartialState[]>([]);
   const [exitsOpen, setExitsOpen] = useState(true);
   const [extraOpen, setExtraOpen] = useState(false);
   const [tifOpen, setTifOpen] = useState(false);
@@ -93,7 +95,6 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const qtyPh = qtyPlaceholder(state, slowView, spec);
   const submit = submitText(state, view, spec);
   const summary = view.canSubmit ? summaryParts(view) : null;
-  const leftText = percentLeftText(view);
 
   // Log each distinct validation error the user runs into (once per change).
   const lastReason = useRef<string | null>(null);
@@ -168,7 +169,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     t.clearQty();
   };
 
-  const exitBlock = (kind: ExitKind, aside?: ReactNode) => {
+  const exitBlock = (kind: ExitKind) => {
     const ex = view[kind];
     const ph = slowView[kind].placeholder;
     const text = exitText(kind, state, ex.enabled ? view : slowView, spec);
@@ -177,7 +178,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
       <ExitLevel
         testId={`nt-${kind}`}
         title={exitTitle(kind)}
-        label={`${exitTitle(kind)}${kind === 'tp' && view.tpLevels.length > 1 && state.tp.enabled ? ' 1' : ''} ${exitUnitLabel(kind, ex.unit)}`}
+        label={`${exitTitle(kind)} ${exitUnitLabel(kind, ex.unit)}`}
         unit={ex.unit}
         units={exitUnitsFor().map((u) => ({
           value: u,
@@ -190,7 +191,6 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
         onUnit={(u) => t.setExitUnit(kind, u, view)}
         enabled={ex.enabled}
         onToggle={(v) => t.setExitEnabled(kind, v, slowView)}
-        aside={aside}
         field={{
           value: ex.enabled ? ex.input : '',
           display: ex.enabled ? formatExitInput(ex.input, ex.unit, spec) : '',
@@ -214,28 +214,16 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     );
   };
 
-  const percentField = (index: number) => {
-    const raw = index === 0 ? state.tpPercent : (state.tpLevels[index - 1]?.percent ?? '');
-    return (
-      <div className={styles.percent}>
-        <ValueField
-          value={raw}
-          onChange={(v) => t.setTpPercent(index, v)}
-          placeholder={String(view.tpLevels[index]?.percent ?? 0)}
-          suffix="%"
-          disabled={!state.tp.enabled}
-          onActivate={() => t.setExitEnabled('tp', true, slowView)}
-          ariaLabel={`Take profit ${index + 1}, % of position`}
-          testId={`nt-tp${index + 1}-percent`}
-          onEnter={doSubmit}
-        />
-      </div>
-    );
-  };
-
-  const multi = state.tp.enabled && view.tpLevels.length > 1;
   const slHasCaption = view.sl.enabled && !!exitText('sl', state, view, spec).caption;
   const today = now();
+
+  if (screen === 'levels') {
+    return (
+      <div className={styles.panel} data-testid="order-panel" data-variant="new">
+        <ExitLevelsPanel ticket={ticket} snapshot={partialsSnapshot} onClose={() => setScreen('order')} />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.panel} data-testid="order-panel" data-variant="new">
@@ -358,58 +346,26 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 <div className={styles.exits}>
                   {exitBlock('sl')}
                   <div style={{ height: slHasCaption ? 12 : 16 }} />
-                  {exitBlock('tp', multi ? percentField(0) : undefined)}
-                  {multi &&
-                    state.tpLevels.map((l, i) => {
-                      const index = i + 1;
-                      const lv = view.tpLevels[index];
-                      const text = levelText('tp', state.tp.unit, lv?.level ?? null, state.side, spec, view.qty.units > 0, lv?.money ?? undefined);
-                      return (
-                        <div key={index} className={styles.level} data-testid={`nt-tp${index + 1}`}>
-                          <div className={styles.levelHeader}>
-                            <span className={styles.levelTitle}>
-                              Take profit {index + 1} {exitUnitLabel('tp', state.tp.unit)}
-                            </span>
-                            <IconButton label={`Remove take profit ${index + 1}`} onClick={() => t.removeTpLevel(index)} testId={`nt-tp${index + 1}-remove`} />
-                          </div>
-                          <div className={styles.levelRow}>
-                            <div className={styles.levelValue}>
-                              <ValueField
-                                value={l.input}
-                                display={formatExitInput(l.input, state.tp.unit, spec)}
-                                onChange={(v) => t.setTpLevelInput(index, v)}
-                                placeholder={exitPlaceholder()}
-                                placeholderStyle="text"
-                                suffix={text.suffix}
-                                right={text.right}
-                                rightTone={text.rightTone}
-                                state={text.captionTone === 'error' ? 'error' : 'default'}
-                                step={state.tp.unit === 'price' ? spec.tickSize : 1}
-                                decimals={state.tp.unit === 'price' ? pricePrecision(spec) : 0}
-                                onEnter={doSubmit}
-                                ariaLabel={`Take profit ${index + 1}`}
-                                testId={`nt-tp${index + 1}-input`}
-                              />
-                            </div>
-                            {percentField(index)}
-                          </div>
-                          {text.caption && <FieldCaption tone={text.captionTone}>{text.caption}</FieldCaption>}
-                        </div>
-                      );
-                    })}
-                  {leftText && (
-                    <FieldCaption tone="neutral" testId="nt-percent-left">
-                      {leftText}
-                    </FieldCaption>
-                  )}
+                  {exitBlock('tp')}
                   {view.riskReward !== null && (
                     <div className={styles.rr}>
                       <InfoRow label={'Risk / Reward'} value={riskRewardText(view.riskReward)} />
                     </div>
                   )}
-                  {state.tp.enabled && state.tpLevels.length < 2 && (
+                  {state.tp.enabled && (
                     <div className={`${styles.addLevel} ${view.riskReward === null ? styles.addLevelAlone : ''}`}>
-                      <TextButton onClick={() => t.addTpLevel(view)}>Add partial exit</TextButton>
+                      <TextButton
+                        onClick={() => {
+                          setPartialsSnapshot(state.partials);
+                          if (!state.partials.length) t.addPartial(view);
+                          setScreen('levels');
+                        }}
+                        disabled={!(view.qty.units > 0 && view.level1Qty >= 2 * spec.minQty) && !state.partials.length}
+                        disabledReason="Enter a quantity of at least 2 to split the exit"
+                        testId="nt-partial-exit"
+                      >
+                        {state.partials.length ? `Partial exits · ${state.partials.length + 1} levels` : 'Add partial exit'}
+                      </TextButton>
                     </div>
                   )}
                 </div>

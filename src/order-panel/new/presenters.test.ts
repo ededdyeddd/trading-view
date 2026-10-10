@@ -444,12 +444,21 @@ describe('Block 5. Partial exits (Exit levels)', () => {
     expect(v.draft).toMatchObject({ takeProfit: 207, stopLoss: 195 });
     expect(v.draft?.exitLevels).toBeUndefined();
   });
+  it('level lines before an entry price exists show the typed values', () => {
+    const noPrice = st({ type: 'limit', qtyInput: '', sl: on('price', '195.02'), tp: on('price', '206.96') });
+    const v = nv(noPrice);
+    expect(level1Parts(v, AAPL)).toEqual([
+      { label: 'TP', text: '— @ 206.96' },
+      { label: 'SL', text: '— @ 195.02' },
+    ]);
+    expect(orderTitleText(noPrice, v, AAPL)).toBe('Buy Limit');
+  });
   it('Exit levels texts', () => {
     const v = nv({ ...base, partials: [part('40', '203.00', '197.00')] });
     expect(orderTitleText(base, v, AAPL)).toBe('Buy Limit 100 @ 199.00');
     expect(levelHeadingText(1, 40)).toBe('Level 2 · 40.00%');
     expect([levelPercentText(50), levelPercentText(33.33), levelPercentText(0.24)]).toEqual(['50%', '33.33%', '0.24%']);
-    expect(partialParts(v, 0, AAPL)).toEqual([
+    expect(partialParts({ ...base, partials: [part('40', '203.00', '197.00')] }, v, 0, AAPL)).toEqual([
       { label: 'TP', text: '40 @ 203.00' },
       { label: 'SL', text: '40 @ 197.00' },
     ]);

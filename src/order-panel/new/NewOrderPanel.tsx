@@ -364,7 +364,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                           <LevelRow
                             testId={`nt-level-row-${n + 1}`}
                             title={`Level ${n + 1} ∙ ${levelPercentText(n === 0 ? (view.qty.units > 0 ? (view.level1Qty / view.qty.units) * 100 : 0) : view.partials[n - 1].percent)}`}
-                            legs={n === 0 ? level1Parts(view, spec) : partialParts(view, n - 1, spec)}
+                            legs={n === 0 ? level1Parts(view, spec) : partialParts(state, view, n - 1, spec)}
                             onOpen={() => openLevels(false)}
                             onRemove={() => (n === 0 ? t.removeLevel1() : t.removePartial(n - 1))}
                           />

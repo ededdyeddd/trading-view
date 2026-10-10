@@ -408,7 +408,8 @@ export function orderTitleText(state: TicketState, view: TicketView, spec: Symbo
   const type = state.type === 'market' ? 'Market' : state.type === 'limit' ? 'Limit' : 'Stop';
   const side = state.side === 'buy' ? 'Buy' : 'Sell';
   const px = view.entry !== null ? ` @ ${fmtPrice(view.entry, spec)}` : '';
-  return `${side} ${type} ${fmtQty(view.qty.units, spec)}${px}`;
+  const qty = view.qty.units > 0 ? ` ${fmtQty(view.qty.units, spec)}` : '';
+  return `${side} ${type}${qty}${px}`;
 }
 
 /** "50%", "33.33%": the share without trailing zeros (Level rows on the main panel). */
@@ -417,12 +418,13 @@ export function levelPercentText(percent: number): string {
 }
 
 /** The legs of partial exit `index` (0 = Level 2) as "TP 25 @ 211.00" / "SL 25 @ 197.50". */
-export function partialParts(view: TicketView, index: number, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
+export function partialParts(state: TicketState, view: TicketView, index: number, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
   const p = view.partials[index];
-  const qty = fmtQty(p.qty, spec);
   const parts: { label: 'TP' | 'SL'; text: string }[] = [];
-  if (p.tp.level && !p.tp.level.invalid) parts.push({ label: 'TP', text: `${qty} @ ${fmtPrice(p.tp.level.price, spec)}` });
-  if (p.sl.level && !p.sl.level.invalid) parts.push({ label: 'SL', text: `${qty} @ ${fmtPrice(p.sl.level.price, spec)}` });
+  for (const kind of ['tp', 'sl'] as const) {
+    const text = legLineText(p.qty, p[kind].level, state.partials[index][kind], spec);
+    if (text) parts.push({ label: kind === 'tp' ? 'TP' : 'SL', text });
+  }
   return parts;
 }
 
@@ -433,11 +435,26 @@ export function levelHeadingText(index: number, percent: number): string {
 
 /** Parts of the Level 1 summary row: "TP 60 @ 205.00" · "SL 60 @ 199.00" (a leg that is off is left out). */
 export function level1Parts(view: TicketView, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
-  const qty = fmtQty(view.level1Qty, spec);
   const parts: { label: 'TP' | 'SL'; text: string }[] = [];
-  if (view.tp.enabled && view.tp.level && !view.tp.level.invalid) parts.push({ label: 'TP', text: `${qty} @ ${fmtPrice(view.tp.level.price, spec)}` });
-  if (view.sl.enabled && view.sl.level && !view.sl.level.invalid) parts.push({ label: 'SL', text: `${qty} @ ${fmtPrice(view.sl.level.price, spec)}` });
+  for (const kind of ['tp', 'sl'] as const) {
+    const ex = view[kind];
+    if (!ex.enabled) continue;
+    const text = legLineText(view.level1Qty, ex.level, { unit: ex.unit, input: ex.input }, spec);
+    if (text) parts.push({ label: kind === 'tp' ? 'TP' : 'SL', text });
+  }
   return parts;
+}
+
+/**
+ * "60 @ 205.00": the shares and the level's price. Before an entry price exists the level is not computed, so the typed
+ * value stands in ("— @ 206.96", or "4 % of price" in a unit that needs the entry); an empty leg has no line.
+ */
+function legLineText(qty: number, level: ExitLevel | null, typed: { unit: ExitUnit; input: string }, spec: SymbolSpec): string | null {
+  if (level && !level.invalid) return `${fmtQty(qty, spec)} @ ${fmtPrice(level.price, spec)}`;
+  const n = parseNum(typed.input);
+  if (!Number.isFinite(n)) return null;
+  const shares = qty > 0 ? fmtQty(qty, spec) : DASH;
+  return typed.unit === 'price' ? `${shares} @ ${fmtPrice(n, spec)}` : `${shares} @ ${formatExitInput(typed.input, typed.unit, spec)} ${exitUnitLabel('tp', typed.unit)}`;
 }
 
 /**

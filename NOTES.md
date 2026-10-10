@@ -260,3 +260,11 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - **paperEngine untouched:** Day still expires at the end of the local day, Week / Month at the end of that day. "4:00 PM" is the session close **as displayed** (stocks; 24 h markets say 11:59 PM). Only GTD actually uses it: a date without a time expires at 16:00 local (rule `expiresAtSessionClose`, new panel only — `current` keeps the end of the day). It is local time, not ET.
 - "On date" without a date blocks Limit / Stop ("Pick an expiry date"); the menu no longer pre-fills tomorrow.
 - Date and time fields (from the platform screenshots): a calendar (Mo–Su, today underlined, chosen day dark, days before tomorrow off) and a list of quarter-hour times, both also typeable.
+
+# Forex: pips instead of ticks (new panel), 10 Oct
+
+- `SymbolSpec.pipSize` (EURUSD / GBPUSD 0.0001, USDJPY 0.01) switches the *distance step* from the tick to the pip: SL / TP menu item "Pips", input with one decimal, caption "−40.0 pips (−0.37%) from entry", Quantity caption "Margin 2,169.04 USD · Pip 10.00 USD". The pip value is `qty × pipSize × pointValue` converted to the account currency (USDJPY from JPY at the current rate). Stocks and crypto have no `pipSize` and are unchanged. The ExitUnit stays `'ticks'` internally; `ExitLevel.ticks` and `QtyView.tickValue` hold pips / pip value for forex.
+- Forex lots: `minQty` = `qtyStep` = 1,000 (was 1) — this also applies to the `current` panel for these symbols. Quantity placeholder "1,000"; texts come from the spec ("Enter quantity to buy EURUSD", "1,000 units" / "1 unit").
+- Expires: Day shows "Today, 5:00 PM" for forex (the rollover, **display only** — the engine is untouched; GTD without a time defaults to 17:00 local).
+- The spread is not converted to pips; the "Turn on stop loss to calculate units" caption does not exist any more (the button says "Set stop loss to calculate size"), so there is no such text to localise.
+- The price field's ⇆ offset stays in price ("Ask − 0.00020"), not pips — the prompt only covers SL / TP.

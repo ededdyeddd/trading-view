@@ -107,6 +107,7 @@ export type QtyView = {
   };
   tradeValue: number;
   margin: number;
+  /** Value of one step of distance (a pip for forex, else a tick), account currency. Named after the tick for compatibility. */
   tickValue: number;
   /** Risk at the stop loss for the rounded quantity (the actual risk; the redesign shows it only on the SL field and in the summary). */
   realRisk: number | null;

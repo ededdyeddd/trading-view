@@ -22,6 +22,7 @@ import {
   exitTitle,
   exitUnitBlocked,
   exitUnitsFor,
+  exitDecimals,
   exitUnitInfo,
   exitUnitLabel,
   fillToastText,
@@ -195,18 +196,18 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     const ex = view[kind];
     const ph = slowView[kind].placeholder;
     const text = exitText(kind, state, ex.enabled ? view : slowView, spec);
-    const decimals = ex.unit === 'price' ? pricePrecision(spec) : ex.unit === 'ticks' ? 0 : 2;
+    const decimals = exitDecimals(ex.unit, spec);
     return (
       <ExitLevel
         testId={`nt-${kind}`}
         title={exitTitle(kind)}
-        label={`${exitTitle(kind)} ${exitUnitLabel(kind, ex.unit)}`}
+        label={`${exitTitle(kind)} ${exitUnitLabel(kind, ex.unit, spec)}`}
         unit={ex.unit}
         units={exitUnitsFor().map((u) => ({
           value: u,
-          label: capitalize(exitUnitLabel(kind, u)),
+          label: capitalize(exitUnitLabel(kind, u, spec)),
           end: exitMenuValue(kind, u, state, slowView, spec),
-          info: exitUnitInfo(kind, u),
+          info: exitUnitInfo(kind, u, spec),
           disabled: !!exitUnitBlocked(kind, u, state),
           disabledReason: exitUnitBlocked(kind, u, state) ?? undefined,
         }))}

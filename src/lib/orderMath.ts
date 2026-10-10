@@ -13,7 +13,7 @@ export type QtyUnit = 'units' | 'value' | 'balancePercent' | 'riskMoney' | 'risk
 export type ExitUnit = 'price' | 'ticks' | 'percent' | 'money' | 'balancePercent';
 export type ExitKind = 'sl' | 'tp';
 
-type Spec = Pick<SymbolSpec, 'tickSize' | 'pointValue' | 'currency' | 'marginRate' | 'leverage' | 'qtyStep' | 'minQty' | 'symbol'>;
+type Spec = Pick<SymbolSpec, 'tickSize' | 'pipSize' | 'pointValue' | 'currency' | 'marginRate' | 'leverage' | 'qtyStep' | 'minQty' | 'symbol'>;
 
 const EPS = 1e-9;
 
@@ -86,6 +86,16 @@ export function marginFor(qty: number, price: number, spec: Spec): number {
 /** Account-currency value of one tick for `qty` units. */
 export function tickValue(qty: number, spec: Spec, price: number): number {
   return moneyPerPoint(qty, spec, price) * spec.tickSize;
+}
+
+/** The step distances to an exit are measured in: a pip for forex (`pipSize`), else a tick. */
+export function distanceStep(spec: Pick<Spec, 'tickSize' | 'pipSize'>): number {
+  return spec.pipSize ?? spec.tickSize;
+}
+
+/** Account-currency value of one pip (forex: qty × pipSize × pointValue, USDJPY converted from JPY) or tick. */
+export function stepValue(qty: number, spec: Spec, price: number): number {
+  return moneyPerPoint(qty, spec, price) * distanceStep(spec);
 }
 
 /** Signed P&L in account currency of moving from `entry` to `exit`. */
@@ -189,7 +199,7 @@ export function resolveExit(input: ExitInput): ExitLevel | null {
       price = value;
       break;
     case 'ticks':
-      price = entry + dir * Math.abs(value) * spec.tickSize;
+      price = entry + dir * Math.abs(value) * distanceStep(spec);
       break;
     case 'percent':
       price = entry * (1 + (dir * Math.abs(value)) / 100);
@@ -211,7 +221,8 @@ export function describeExit(kind: ExitKind, side: Side, entry: number, qty: num
   const dir = exitDirection(kind, side);
   const signedDistance = (price - entry) * dir;
   const distance = Math.abs(price - entry);
-  const ticks = Math.round(distance / spec.tickSize + EPS);
+  // Ticks as integers; pips with one decimal.
+  const ticks = spec.pipSize ? Math.round((distance / spec.pipSize) * 10 + EPS) / 10 : Math.round(distance / spec.tickSize + EPS);
   const moneyAbs = distance * moneyPerPoint(qty, spec, entry);
   const money = kind === 'sl' ? -moneyAbs : moneyAbs;
   return {

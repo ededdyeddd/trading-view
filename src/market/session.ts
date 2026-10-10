@@ -45,8 +45,10 @@ export function sessionOpensAt(symbol: string, now: number): number | null {
 
 /**
  * The time an order with Day / "On date" expires by default, as "HH:MM": the close of the regular session
- * (stocks, 16:00 — displayed as 4:00 PM); '' for 24 h markets, where the engine uses the end of the day.
+ * (stocks 16:00 — displayed as 4:00 PM; forex 17:00, the rollover); '' for 24 h markets, where the engine uses the end of the day.
  */
 export function sessionCloseTime(symbol: string): string {
-  return getSpec(symbol).assetClass === 'stock' ? '16:00' : '';
+  const cls = getSpec(symbol).assetClass;
+  // Forex rolls over at 5:00 PM ET.
+  return cls === 'stock' ? '16:00' : cls === 'forex' ? '17:00' : '';
 }

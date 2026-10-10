@@ -250,7 +250,7 @@ export function qtyText(state: TicketState, view: TicketView, spec: SymbolSpec):
       suffix,
       right,
       rightTone: 'neutral',
-      caption: `Not enough margin for ${fmtQty(units, spec)} shares · max ${fmtQty(view.qty.maxUnits, spec)}`,
+      caption: `Not enough margin for ${unitsText(units, spec)} · max ${fmtQty(view.qty.maxUnits, spec)}`,
       captionTone: 'error',
     };
   }
@@ -259,7 +259,7 @@ export function qtyText(state: TicketState, view: TicketView, spec: SymbolSpec):
       suffix,
       right,
       rightTone: 'neutral',
-      caption: `Margin ${fmtMoney(view.qty.margin)} USD · Tick ${fmtMoney(view.qty.tickValue)} USD`,
+      caption: `Margin ${fmtMoney(view.qty.margin)} USD · ${spec.pipSize ? 'Pip' : 'Tick'} ${fmtMoney(view.qty.tickValue)} USD`,
       captionTone: 'neutral',
     };
   }
@@ -281,12 +281,20 @@ export function formatQtyInput(raw: string, unit: QtyUnit, spec: SymbolSpec): st
 
 export const EXIT_UNITS: ExitUnit[] = ['price', 'ticks', 'percent', 'money', 'balancePercent'];
 
-export function exitUnitLabel(kind: ExitKind, unit: ExitUnit): string {
+/** Forex measures distances in pips (symbol spec `pipSize`), everything else in ticks. */
+const stepWord = (spec?: Pick<SymbolSpec, 'pipSize'>) => (spec?.pipSize ? 'pips' : 'ticks');
+
+/** Decimals of a typed exit value: price precision, pips with one decimal, ticks whole, the rest 2. */
+export function exitDecimals(unit: ExitUnit, spec: SymbolSpec): number {
+  return unit === 'price' ? pricePrecision(spec) : unit === 'ticks' ? (spec.pipSize ? 1 : 0) : 2;
+}
+
+export function exitUnitLabel(kind: ExitKind, unit: ExitUnit, spec?: Pick<SymbolSpec, 'pipSize'>): string {
   switch (unit) {
     case 'price':
       return 'price';
     case 'ticks':
-      return 'ticks';
+      return stepWord(spec);
     case 'percent':
       return '% of price';
     case 'money':
@@ -321,7 +329,8 @@ export function levelText(kind: ExitKind, unit: ExitUnit, lvl: ExitLevel | null,
   const moneyText = hasQty ? signedMoney(money ?? lvl.money) : '';
   // Money in the SL / TP fields is grey: the colours live in the summary only.
   const moneyTone: Tone = 'neutral';
-  const delta = signed(lvl.delta, pricePrecision(spec));
+  // Forex shows the distance in pips ("−40.0 pips"), the rest as a price difference.
+  const delta = spec.pipSize ? `${signed(lvl.delta / spec.pipSize, 1)} pips` : signed(lvl.delta, pricePrecision(spec));
   const pct = `${signed(lvl.deltaPercent, 2)}%`;
   const at = `At ${fmtPrice(lvl.price, spec)}`;
   switch (unit) {
@@ -357,7 +366,7 @@ export function formatExitInput(raw: string, unit: ExitUnit, spec: SymbolSpec): 
   const n = parseNum(raw);
   if (!Number.isFinite(n)) return raw;
   if (unit === 'price') return fmtPrice(n, spec);
-  if (unit === 'ticks') return fmtNumber(n, 0);
+  if (unit === 'ticks') return fmtNumber(n, spec.pipSize ? 1 : 0);
   if (unit === 'money') return fmtNumber(n, 2);
   return fmtNumber(n, Math.min(decimalsTyped(raw), 2));
 }
@@ -367,7 +376,7 @@ function exitValueText(unit: ExitUnit, n: number, spec: SymbolSpec): string {
     case 'price':
       return fmtPrice(n, spec);
     case 'ticks':
-      return fmtNumber(n, 0);
+      return fmtNumber(n, spec.pipSize ? 1 : 0);
     case 'money':
       return fmtMoney(Math.abs(n));
     case 'percent':
@@ -446,7 +455,7 @@ function legPriceText(level: ExitLevel | null, typed: { unit: ExitUnit; input: s
   if (level) return fmtPrice(level.price, spec);
   const n = parseNum(typed.input);
   if (!Number.isFinite(n)) return null;
-  return typed.unit === 'price' ? fmtPrice(n, spec) : `${formatExitInput(typed.input, typed.unit, spec)} ${exitUnitLabel('tp', typed.unit)}`;
+  return typed.unit === 'price' ? fmtPrice(n, spec) : `${formatExitInput(typed.input, typed.unit, spec)} ${exitUnitLabel('tp', typed.unit, spec)}`;
 }
 
 /**
@@ -464,13 +473,13 @@ export function exitUnitsFor(): ExitUnit[] {
 }
 
 /** ⓘ text of an SL / TP menu item (none for Price). */
-export function exitUnitInfo(kind: ExitKind, unit: ExitUnit): string | undefined {
+export function exitUnitInfo(kind: ExitKind, unit: ExitUnit, spec?: Pick<SymbolSpec, 'pipSize'>): string | undefined {
   const sl = kind === 'sl';
   switch (unit) {
     case 'price':
       return undefined;
     case 'ticks':
-      return 'Distance from entry in ticks';
+      return `Distance from entry in ${stepWord(spec)}`;
     case 'percent':
       return 'Distance from entry as % of price';
     case 'money':

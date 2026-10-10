@@ -29,7 +29,7 @@ import {
   scaleLevels,
   sortLevelIndices,
   roundToTick,
-  tickValue,
+  stepValue,
   tradeValue,
   exitValueInUnit,
   type ExitKind,
@@ -51,7 +51,7 @@ export const NEW_EXIT_DEFAULT_PERCENT: Record<ExitKind, number> = { sl: 2, tp: 4
 export function exitInputText(level: ExitLevel, unit: ExitUnit, spec: SymbolSpec): string {
   const v = exitValueInUnit(level, unit);
   if (unit === 'price') return v.toFixed(pricePrecision(spec));
-  if (unit === 'ticks') return String(v);
+  if (unit === 'ticks') return spec.pipSize ? v.toFixed(1) : String(v);
   return v.toFixed(2);
 }
 
@@ -170,7 +170,7 @@ export function deriveTicket(state: TicketState, ctx: TicketContext): TicketView
     equivalents: eq,
     tradeValue: tradeValue(units, qtyPrice, spec),
     margin: marginFor(units, qtyPrice, spec),
-    tickValue: tickValue(units, spec, qtyPrice),
+    tickValue: stepValue(units, spec, qtyPrice),
     realRisk: eq.riskMoney,
     riskPerUnit: perUnit,
     riskBelowOne: riskSized && qtyValue > 0 && units === 0 && slDistanceForQty !== null,
@@ -376,7 +376,7 @@ function exitView(
   const input = !ex.touched && ex.unit === 'price' && level ? fmtPriceInput(level.price, spec) : ex.input;
   let error: string | null = null;
   if (ex.enabled) {
-    if (circular) error = 'Use price, ticks or % for stop loss when sizing by risk';
+    if (circular) error = `Use price, ${spec.pipSize ? 'pips' : 'ticks'} or % for stop loss when sizing by risk`;
     else if (!level) error = kind === 'sl' ? 'Enter stop loss' : 'Enter take profit';
     else if (level.invalid)
       error = `${kind === 'sl' ? 'Stop loss' : 'Take profit'} must be ${(kind === 'sl') === (state.side === 'buy') ? 'below' : 'above'} entry price`;

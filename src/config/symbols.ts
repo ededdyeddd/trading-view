@@ -8,6 +8,8 @@ export type SymbolSpec = {
   assetClass: AssetClass;
   /** Minimal price increment. */
   tickSize: number;
+  /** Forex: one pip (0.0001, JPY pairs 0.01). Where set, distances and the value of a step are shown in pips instead of ticks. */
+  pipSize?: number;
   /** Quote-currency value of a 1.0 price move for 1 unit of quantity. */
   pointValue: number;
   /** Quote currency of the instrument (P&L currency before conversion). */
@@ -140,12 +142,13 @@ export const SYMBOLS: SymbolSpec[] = [
     exchange: 'FX',
     assetClass: 'forex',
     tickSize: 0.00001,
+    pipSize: 0.0001,
     pointValue: 1,
     currency: 'USD',
     marginRate: 0.02,
     leverage: 50,
-    minQty: 1,
-    qtyStep: 1,
+    minQty: 1000,
+    qtyStep: 1000,
     qtyLabel: 'Units',
     liveFeed: 'sim',
     sim: { bid: 1.12481, spreadTicks: 2, dailyVol: 0.005 },
@@ -156,12 +159,13 @@ export const SYMBOLS: SymbolSpec[] = [
     exchange: 'FX',
     assetClass: 'forex',
     tickSize: 0.00001,
+    pipSize: 0.0001,
     pointValue: 1,
     currency: 'USD',
     marginRate: 0.02,
     leverage: 50,
-    minQty: 1,
-    qtyStep: 1,
+    minQty: 1000,
+    qtyStep: 1000,
     qtyLabel: 'Units',
     liveFeed: 'sim',
     sim: { bid: 1.32376, spreadTicks: 3, dailyVol: 0.006 },
@@ -172,12 +176,13 @@ export const SYMBOLS: SymbolSpec[] = [
     exchange: 'FX',
     assetClass: 'forex',
     tickSize: 0.001,
+    pipSize: 0.01,
     pointValue: 1,
     currency: 'JPY',
     marginRate: 0.02,
     leverage: 50,
-    minQty: 1,
-    qtyStep: 1,
+    minQty: 1000,
+    qtyStep: 1000,
     qtyLabel: 'Units',
     liveFeed: 'sim',
     sim: { bid: 157.822, spreadTicks: 3, dailyVol: 0.006 },

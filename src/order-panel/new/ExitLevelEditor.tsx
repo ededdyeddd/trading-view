@@ -1,6 +1,6 @@
 import { ChevronLeft, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { pricePrecision, qtyPrecision } from '../../config/symbols';
+import { qtyPrecision } from '../../config/symbols';
 import { fmtQty } from '../../lib/format';
 import type { ExitKind, ExitUnit } from '../../lib/orderMath';
 import { useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
@@ -11,6 +11,7 @@ import {
   EXIT_UNITS,
   exitTitle,
   exitUnitBlocked,
+  exitDecimals,
   exitUnitInfo,
   exitUnitLabel,
   formatExitInput,
@@ -60,18 +61,18 @@ export function ExitLevelEditor({ ticket, index, snapshot, onClose }: Props) {
     const lv = v[kind];
     const sv = slowView.levels[index] ?? v;
     const text = levelText(kind, x.unit, lv.level, state.side, spec, v.qty > 0, lv.level?.money);
-    const decimals = x.unit === 'price' ? pricePrecision(spec) : x.unit === 'ticks' ? 0 : 2;
+    const decimals = exitDecimals(x.unit, spec);
     return (
       <div className={styles.field} data-testid={`nt-e-${kind}`}>
         <div className={styles.label}>
           <FieldLabelMenu<ExitUnit>
-            label={`${exitTitle(kind)} ${exitUnitLabel(kind, x.unit)}`}
+            label={`${exitTitle(kind)} ${exitUnitLabel(kind, x.unit, spec)}`}
             value={x.unit}
             options={EXIT_UNITS.map((u) => ({
               value: u,
-              label: capitalize(exitUnitLabel(kind, u)),
+              label: capitalize(exitUnitLabel(kind, u, spec)),
               end: levelMenuValue(u, x, sv[kind].level, sv.qty > 0, spec),
-              info: exitUnitInfo(kind, u),
+              info: exitUnitInfo(kind, u, spec),
               disabled: !!(kind === 'sl' && exitUnitBlocked(kind, u, state)),
               disabledReason: kind === 'sl' ? (exitUnitBlocked(kind, u, state) ?? undefined) : undefined,
             }))}

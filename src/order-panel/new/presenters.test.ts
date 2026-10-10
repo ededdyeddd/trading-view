@@ -7,11 +7,13 @@ import type { ExitUnit, QtyUnit } from '../../lib/orderMath';
 import type { ExitState, LevelState, TicketState } from '../../order-ticket/types';
 import {
   DASH,
+  exitDecimals,
   exitMenuValue,
   exitText,
   exitUnitBlocked,
   exitUnitsFor,
   exitUnitInfo,
+  exitUnitLabel,
   formatExitInput,
   formatQtyInput,
   marketClosedText,
@@ -33,6 +35,7 @@ import {
   submitText,
   summaryParts,
   summaryText,
+  unitsText,
   expiresMenuItem,
   expiresRowText,
   expiresValue,
@@ -766,5 +769,58 @@ describe('Colours: money in the SL / TP fields is grey, the summary colours the 
   });
   it('no exits → no summary', () => {
     expect(summaryParts(deriveTicket(st({ qtyInput: '100' }), { ...ctx, rules: NEW_RULES }), AAPL)).toBeNull();
+  });
+});
+
+describe('Forex: pips instead of ticks (EURUSD, USDJPY)', () => {
+  const EUR = getSpec('EURUSD');
+  const JPY = getSpec('USDJPY');
+  const eq: Quote = { symbol: 'EURUSD', bid: 1.0845, ask: 1.08452, last: 1.08452, ts: NOW };
+  const fctx: TicketContext = { quote: eq, spec: EUR, balance: 100_000, availableFunds: 100_000, now: NOW, rules: NEW_RULES };
+  const fx = (p: Partial<TicketState> = {}) => st({ symbol: 'EURUSD', ...p });
+  const buy = fx({ qtyInput: '100000', sl: on('price', '1.08052') });
+  const v = deriveTicket(buy, fctx);
+
+  it('Buy 100,000 EURUSD @ 1.08452, SL 1.08052 → Pips 40.0, −400.00 USD, "Pip 10.00 USD"', () => {
+    expect(v.sl.level?.ticks).toBe(40);
+    expect(exitMenuValue('sl', 'ticks', buy, v, EUR)).toBe('40.0');
+    expect(exitText('sl', buy, v, EUR)).toMatchObject({ right: '−400.00 USD', caption: '−40.0 pips (−0.37%) from entry' });
+    expect(qtyText(buy, v, EUR).caption).toBe('Margin 2,169.04 USD · Pip 10.00 USD');
+  });
+  it('menu says Pips; the label and the ⓘ follow; input in pips (one decimal) gives the price', () => {
+    expect([exitUnitLabel('sl', 'ticks', EUR), exitUnitLabel('sl', 'ticks', getSpec('AAPL'))]).toEqual(['pips', 'ticks']);
+    expect(exitUnitInfo('sl', 'ticks', EUR)).toBe('Distance from entry in pips');
+    const inPips = deriveTicket(fx({ qtyInput: '100000', sl: on('ticks', '40') }), fctx);
+    expect(inPips.sl.level?.price).toBe(1.08052);
+    expect(exitDecimals('ticks', EUR)).toBe(1);
+    expect(exitDecimals('ticks', getSpec('AAPL'))).toBe(0);
+    expect(formatExitInput('40', 'ticks', EUR)).toBe('40.0');
+  });
+  it('units: minimum and step 1,000, placeholder "1,000", texts come from the symbol', () => {
+    const empty = fx();
+    const ev = deriveTicket(empty, fctx);
+    expect(qtyPlaceholder(empty, ev, EUR).placeholder).toBe('1,000');
+    expect(submitText(empty, ev, EUR).secondary).toBe('Enter quantity to buy EURUSD');
+    expect(unitsText(1000, EUR)).toBe('1,000 units');
+    expect(unitsText(1, EUR)).toBe('1 unit');
+  });
+  it('USDJPY: pip = 0.01, its value is converted from JPY at the current rate', () => {
+    const jq: Quote = { symbol: 'USDJPY', bid: 157.82, ask: 157.822, last: 157.82, ts: NOW };
+    const s = st({ symbol: 'USDJPY', qtyInput: '100000' });
+    const jv = deriveTicket(s, { ...fctx, quote: jq, spec: JPY });
+    // 100,000 × 0.01 JPY = 1,000 JPY ≈ 6.34 USD
+    expect(qtyText(s, jv, JPY).caption).toMatch(/· Pip 6\.34 USD$/);
+    expect(deriveTicket(st({ symbol: 'USDJPY', qtyInput: '100000', sl: on('ticks', '50') }), { ...fctx, quote: jq, spec: JPY }).sl.level?.price).toBe(157.322);
+  });
+  it('Day expires at the 5:00 PM ET rollover; stocks are unchanged', () => {
+    expect(expiresValue('day', NOW, st(), EUR)).toBe('Today, 5:00 PM');
+    expect(expiresValue('day', NOW, st(), AAPL)).toBe('Today, 4:00 PM');
+    expect(expiresValue('week', NOW, st(), EUR)).toBe('Oct 15');
+  });
+  it('stocks keep ticks: "Ticks from", integer values, "Tick 1.00 USD"', () => {
+    const a = st({ qtyInput: '100', sl: on('price', '197.50') });
+    const av = deriveTicket(a, { ...ctx, rules: NEW_RULES });
+    expect(exitMenuValue('sl', 'ticks', a, av, AAPL)).toBe('407');
+    expect(qtyText(a, av, AAPL).caption).toBe('Margin 403.14 USD · Tick 1.00 USD');
   });
 });

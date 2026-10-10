@@ -234,7 +234,7 @@ export function Sandbox() {
         </Cell>
         <Cell title="TextButton (hover → Coming soon)">
           <div style={{ paddingTop: 24 }}>
-            <TextButton tooltip="Coming soon">Add level</TextButton>
+            <TextButton tooltip="Coming soon">Add partial exit</TextButton>
           </div>
         </Cell>
         <Cell title="Switch">

@@ -217,3 +217,5 @@ Source: the Figma frames `4116:117479` (Market / Limit · Empty / Filled, unit-m
 - **Panel width.** The Figma frames are 360 px wide; the prototype stays at **320 px** (resizable 300–480, an earlier agreed decision), so widths differ by 40 px. The inner metrics (field 34, radius 6, paddings 16, footer block) follow the frames.
 - **Section 8 (Market · Risk USD + SL):** the Quantity field keeps the unit in the label ("Risk USD ▾"), so the left value is `407.00` without " USD"; right `100 shares`.
 - Figma "Limit · Filled" shows `Margin 398.00 · Tick 1.00 USD`; we show `Margin 398.00 USD · Tick 1.00 USD` (currency always, per the prompt).
+
+- **"Add level" renamed to "Add partial exit"** in the new panel (Figma 4111:97248). Current panel keeps "Add level".

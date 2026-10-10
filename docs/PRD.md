@@ -93,7 +93,7 @@ User stories:
 - Явный переключатель Buy / Sell со спредом.
 - Поле Limit Price с отступом от Ask / Bid и предупреждением «Fills now».
 - Поле Quantity с меню единиц: Shares, USD, % balance, Risk USD, Risk % balance.
-- Exits: Stop loss и Take profit с переключателем, меню единиц, суммой в USD, расстоянием от входа; строка Risk / Reward; кнопка «Add level».
+- Exits: Stop loss и Take profit с переключателем, меню единиц, суммой в USD, расстоянием от входа; строка Risk / Reward; кнопка «Add partial exit».
 - Строки Time in force (с датой окончания) и Extra settings (свёрнута).
 - Сводка над кнопкой и двухстрочная кнопка с причиной блокировки.
 - Валидация с текстом причины.
@@ -184,7 +184,7 @@ User stories:
 - FR-6.5. Подпись — цена уровня (если её не видно) и расстояние от входа: «−4.07 (−2.02%) from entry». Тики в подписи — только при вводе в тиках.
 - FR-6.6. Ввод в тиках, % и USD всегда положительный. Знак ставит панель.
 - FR-6.7. Когда включены SL и TP — строка «Risk / Reward 1 : 2.32».
-- FR-6.8. Кнопка «+ Add level» — до 3 уровней TP, у каждого поле «% of position». Уровни делят остаток поровну, сумма не больше 100%, подпись «12% left». Деньги TP в сводке — сумма по уровням, R:R — по средневзвешенному TP.
+- FR-6.8. Кнопка «+ Add partial exit» — до 3 уровней TP, у каждого поле «% of position». Уровни делят остаток поровну, сумма не больше 100%, подпись «12% left». Деньги TP в сводке — сумма по уровням, R:R — по средневзвешенному TP.
 
 ### FR-7. Time in force и Extra settings
 
@@ -505,7 +505,7 @@ type Quote = { symbol: string; bid: number; ask: number; last: number; ts: numbe
 2. `SideToggle`.
 3. `UnderlineTabs`: Market активен.
 4. Quantity.
-5. Exits: заголовок с шевроном, Stop loss, Take profit, Risk / Reward, «+ Add level».
+5. Exits: заголовок с шевроном, Stop loss, Take profit, Risk / Reward, «+ Add partial exit».
 6. Time in force: «Week · Oct 15». Дата = сегодня + 7 дней, от текущей даты.
 7. Extra settings: свёрнута.
 8. Закреплено внизу: `OrderSummary` + `SubmitButton`.
@@ -600,7 +600,7 @@ type Quote = { symbol: string; bid: number; ask: number; last: number; ts: numbe
 
 ## Не делать в 2a
 
-Limit, Stop, Risk-режимы Quantity, несколько уровней TP (кнопка «+ Add level» видна, но пока показывает тултип «Coming soon»), линии на графике, баннер «рынок закрыт», выбор срока (строка Time in force видна, но не раскрывается).
+Limit, Stop, Risk-режимы Quantity, несколько уровней TP (кнопка «+ Add partial exit» видна, но пока показывает тултип «Coming soon»), линии на графике, баннер «рынок закрыт», выбор срока (строка Time in force видна, но не раскрывается).
 ```
 
 ## Приложение C. Промпт для Claude Code: Limit, Stop, risk-first и тест (2b)
@@ -672,7 +672,7 @@ Limit, Stop, Risk-режимы Quantity, несколько уровней TP (�
 
 ## Блок 5. Несколько уровней TP
 
-- «+ Add level» добавляет TP 2, TP 3 (максимум 3). У каждого уровня есть поле «% of position».
+- «+ Add partial exit» добавляет TP 2, TP 3 (максимум 3). У каждого уровня есть поле «% of position».
 - По умолчанию уровни делят остаток поровну. Сумма не больше 100%: сверх остатка ввести нельзя, подпись «12% left».
 - Сводка: «SL −400.00 USD · TP +800.00 USD (3 levels)». Деньги TP = сумма по уровням.
 - R:R считается по средневзвешенному TP.

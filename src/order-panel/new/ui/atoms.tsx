@@ -607,7 +607,7 @@ export function SettingsRow({ title, value, chevron, onClick, testId }: Settings
 
 // ---------------------------------------------------------------------------
 
-/** "+ Add level" text button; with `tooltip` and no handler it shows the tooltip instead ("Coming soon"). */
+/** "+ Add partial exit" text button; with `tooltip` and no handler it shows the tooltip instead ("Coming soon"). */
 export function TextButton({ children, tooltip, onClick }: { children: ReactNode; tooltip?: string; onClick?: () => void }) {
   const [tip, setTip] = useState(false);
   return (

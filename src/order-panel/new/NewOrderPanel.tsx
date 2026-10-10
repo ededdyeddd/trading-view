@@ -409,7 +409,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                   )}
                   {state.tp.enabled && state.tpLevels.length < 2 && (
                     <div className={`${styles.addLevel} ${view.riskReward === null ? styles.addLevelAlone : ''}`}>
-                      <TextButton onClick={() => t.addTpLevel(view)}>Add level</TextButton>
+                      <TextButton onClick={() => t.addTpLevel(view)}>Add partial exit</TextButton>
                     </div>
                   )}
                 </div>

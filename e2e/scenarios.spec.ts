@@ -383,10 +383,11 @@ test.describe('new · exits: levels, Protected size, summary (frozen AAPL 201.56
     await page.getByTestId('nt-level-row-2-open').click();
     await page.getByTestId('nt-e-qty').fill('70');
     await expect(page.getByTestId('nt-e-caption')).toHaveText('Exits exceed the order by 20 shares');
-    await page.getByTestId('nt-editor-confirm').click(); // allowed: the list shows the problem, the button gives the reason
-    await expect(page.getByTestId('nt-exits-caption')).toHaveText('Exits exceed the order by 20 shares');
+    await page.getByTestId('nt-editor-confirm').click(); // allowed: the informer above the button gives the reason
+    await expect(page.getByTestId('nt-informer-text')).toHaveText('Exits exceed the order by 20 shares');
+    await expect(page.getByTestId('nt-exits-caption')).toHaveCount(0);
     await expect(page.getByTestId('nt-submit')).toBeDisabled();
-    await expect(page.getByTestId('nt-submit')).toContainText('Reduce exits to 100 shares');
+    await expect(page.getByTestId('nt-submit')).toContainText('100 AAPL · MKT');
     await page.getByTestId('nt-level-row-2-open').click();
     await page.getByTestId('nt-editor-discard').click();
     await expect(page.getByTestId('nt-protected-value')).toHaveText('120%'); // Discard goes back to the state when the editor was opened
@@ -400,13 +401,67 @@ test.describe('new · exits: levels, Protected size, summary (frozen AAPL 201.56
     await expect(page.getByTestId('nt-sl-input')).toBeVisible();
   });
 
-  test('a stop loss on the wrong side: red in the row, the reason on the button', async ({ page }) => {
+  test('a stop loss on the wrong side: red in the row, the reason in the informer', async ({ page }) => {
     await ready(page);
     await page.getByTestId('nt-partial-exit').click();
     await page.getByTestId('nt-e-sl-input').fill('205');
     await page.getByTestId('nt-editor-confirm').click();
     await expect(page.getByTestId('nt-submit')).toBeDisabled();
-    await expect(page.getByTestId('nt-submit')).toContainText('Stop loss must be below entry');
+    await expect(page.getByTestId('nt-informer-text')).toHaveText('Stop loss must be below entry');
+  });
+});
+
+test.describe('new · informer above the button (FR-8.7, frozen AAPL 201.56 / 201.57)', () => {
+  async function openMarket(page: Page, query = '') {
+    await page.goto(`/?panel=new&freeze=1${query}`);
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`/?panel=new&freeze=1${query}`);
+    await page.getByTestId('nt-type-market').click();
+  }
+  const informer = (page: Page) => page.getByTestId('nt-informer');
+
+  test('an empty form has no informer; the button asks', async ({ page }) => {
+    await openMarket(page);
+    await expect(informer(page)).toHaveCount(0);
+    await expect(page.getByTestId('nt-submit')).toContainText('Enter quantity to buy AAPL');
+  });
+
+  test('SL on the wrong side: error informer, red SL, ordinary caption, button with the order text; a click goes to the field', async ({ page }) => {
+    await openMarket(page);
+    await page.getByTestId('nt-qty').fill('100');
+    await page.getByTestId('nt-sl-toggle').click();
+    await page.getByTestId('nt-sl-input').fill('205');
+    await expect(page.getByTestId('nt-informer-text')).toHaveText('Stop loss must be below entry');
+    await expect(informer(page)).toHaveAttribute('aria-live', 'assertive');
+    await expect(informer(page)).toHaveAttribute('data-kind', 'error');
+    await expect(page.getByTestId('nt-sl-caption')).toHaveText(/from entry$/);
+    await expect(page.getByTestId('nt-submit')).toBeDisabled();
+    await expect(page.getByTestId('nt-submit')).toContainText('100 AAPL · MKT');
+    await expect(page.getByTestId('nt-summary')).toHaveCount(0);
+    await page.getByTestId('nt-qty').click(); // focus elsewhere
+    await informer(page).getByRole('button').click();
+    await expect(page.getByTestId('nt-sl-input')).toBeFocused();
+    await page.getByTestId('nt-sl-input').fill('197.50');
+    await expect(informer(page)).toHaveCount(0);
+    await expect(page.getByTestId('nt-submit')).toBeEnabled();
+  });
+
+  test('not enough margin: error on Quantity, its caption stays "Margin … · Tick …"', async ({ page }) => {
+    await openMarket(page);
+    await page.getByTestId('nt-qty').fill('30000');
+    await expect(page.getByTestId('nt-informer-text')).toHaveText(/^Not enough margin for 30,000 shares · max [\d,]+$/);
+    await expect(page.getByTestId('nt-qty-caption')).toHaveText(/^Margin .* · Tick /);
+    await expect(page.getByTestId('nt-submit')).toBeDisabled();
+  });
+
+  test('market closed: warning informer in ET, the button is active, no banner above the form', async ({ page }) => {
+    await openMarket(page, '&market=closed');
+    await page.getByTestId('nt-qty').fill('100');
+    await expect(page.getByTestId('nt-informer-text')).toHaveText(/^Market is closed · opens (Mon|Tue|Wed|Thu|Fri) \d{1,2}:\d{2} (AM|PM) ET$/);
+    await expect(informer(page)).toHaveAttribute('aria-live', 'polite');
+    await expect(page.getByTestId('nt-market-closed')).toHaveCount(0);
+    await expect(page.getByTestId('nt-submit')).toBeEnabled();
+    await expect(page.getByTestId('nt-submit')).toContainText('100 AAPL · MKT · at open');
   });
 });
 

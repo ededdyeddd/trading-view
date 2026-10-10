@@ -120,6 +120,13 @@
   --nt-border-danger: #f23645; /* color/border/primary/danger (DS error state, 2px) */
   --nt-border-warning: #f57c00;
 
+  /* OrderInformer (Figma 4189:25056 / 25132): the reason above the button */
+  --nt-informer-error-bg: #fdecee;
+  --nt-informer-error-icon: #f23645;
+  --nt-informer-warning-bg: #fff4e5;
+  --nt-informer-warning-icon: #ff9800;
+  --nt-informer-text: #131722;
+  --nt-informer-icon-text: #ffffff;
   --nt-status-bg: #e91e6326; /* color/overlay/negative-2/light */
   --nt-status-fg: #ad1457; /* color/content/secondary/danger-extra-bold */
   --nt-shadow-s: 0 0 3px #ebebeb; /* TV Shadow S */

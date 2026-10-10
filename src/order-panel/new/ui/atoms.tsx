@@ -452,7 +452,39 @@ export function IconButton({ label, onClick, testId }: { label: string; onClick:
   );
 }
 
-/** New atom: a notice above the form (e.g. "Market is closed · opens Mon 15:30"). No 2a atom is a page-level banner. */
+/**
+ * The reason above the button (FR-8.7). error = the order cannot be sent (assertive), warning = it can, with a caveat (polite).
+ * The icon is always there: the kind never rests on colour alone. With `onClick` the whole plate is a button (error → its field).
+ */
+export function OrderInformer({ kind, children, onClick, testId = 'nt-informer' }: { kind: 'error' | 'warning'; children: ReactNode; onClick?: () => void; testId?: string }) {
+  const body = (
+    <>
+      <span className={s.informerIcon} aria-hidden>
+        !
+      </span>
+      <span className={s.informerText} data-testid={`${testId}-text`}>{children}</span>
+    </>
+  );
+  return (
+    <div
+      className={cx(s.informer, kind === 'error' ? s.informerError : s.informerWarning)}
+      role={kind === 'error' ? 'alert' : 'status'}
+      aria-live={kind === 'error' ? 'assertive' : 'polite'}
+      data-kind={kind}
+      data-testid={testId}
+    >
+      {onClick ? (
+        <button type="button" className={s.informerButton} onClick={onClick}>
+          {body}
+        </button>
+      ) : (
+        body
+      )}
+    </div>
+  );
+}
+
+/** Old atom: a notice above the form (e.g. "Market is closed · opens Mon 15:30"). Replaced by OrderInformer in the panel. */
 export function Banner({ children, testId }: { children: ReactNode; testId?: string }) {
   return (
     <div className={s.banner} role="status" data-testid={testId}>

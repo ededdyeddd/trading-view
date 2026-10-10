@@ -18,6 +18,7 @@ import {
   exitUnitLabel,
   formatExitInput,
   formatQtyInput,
+  informerFor,
   marketClosedText,
   exitHeadingText,
   levelPercentText,
@@ -145,8 +146,9 @@ describe('Sell mirrors sides', () => {
   it('sell SL below entry is an error', () => {
     const s = st({ side: 'sell', qtyInput: '100', sl: on('price', '200') });
     const v = deriveTicket(s, ctx);
-    expect(exitText('sl', s, v, AAPL)).toMatchObject({ caption: 'Stop loss must be above entry', captionTone: 'error' });
-    expect(submitText(s, v, AAPL).secondary).toBe('Stop loss must be above entry');
+    expect(informerFor(s, v, AAPL)).toMatchObject({ kind: 'error', text: 'Stop loss must be above entry', field: 'sl' });
+    expect(exitText('sl', s, v, AAPL)).toMatchObject({ captionTone: 'neutral' });
+    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
   });
 });
 
@@ -180,17 +182,20 @@ describe('Summary and submit button (step 3 table)', () => {
   it('SL on the wrong side', () => {
     const s = st({ qtyInput: '100', sl: on('price', '205') });
     expect(summaryText(view(s), AAPL)).toBeNull();
-    expect(submitText(s, view(s), AAPL)).toMatchObject({ secondary: 'Stop loss must be below entry', disabled: true });
+    expect(informerFor(s, view(s), AAPL)?.text).toBe('Stop loss must be below entry');
+    expect(submitText(s, view(s), AAPL)).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
   });
   it('TP on the wrong side', () => {
     const s = st({ qtyInput: '100', tp: on('price', '199') });
-    expect(submitText(s, view(s), AAPL)).toMatchObject({ secondary: 'Take profit must be above entry', disabled: true });
+    expect(informerFor(s, view(s), AAPL)?.text).toBe('Take profit must be above entry');
+    expect(submitText(s, view(s), AAPL)).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
   });
   it('not enough margin', () => {
     const s = st({ qtyInput: '100' });
     const v = view(s, { ...ctx, availableFunds: 100 });
-    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: 'Not enough margin', disabled: true });
-    expect(qtyText(s, v, AAPL)).toMatchObject({ caption: 'Not enough margin for 100 shares · max 24', captionTone: 'error' });
+    expect(informerFor(s, v, AAPL)?.text).toBe('Not enough margin for 100 shares · max 24');
+    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
+    expect(qtyText(s, v, AAPL)).toMatchObject({ captionTone: 'neutral' });
   });
   it('sell button', () => {
     const s = st({ side: 'sell' });
@@ -358,17 +363,19 @@ describe('Block 3. Risk modes', () => {
     expect(qtyText(open, nv(open), AAPL).caption).not.toMatch(/stop loss/i);
     expect(submitText(s, v, AAPL)).toMatchObject({ secondary: 'Set stop loss to calculate size', disabled: true });
   });
-  it('shares = 0: "0 shares", "Risk too small for 1 share (min 4.07 USD)", button disabled with this reason', () => {
+  it('shares = 0: "0 shares", informer "Risk is below 1 share (4.07 USD)", the button keeps the order text and is inactive', () => {
     const s = st({ qtyUnit: 'riskMoney', qtyInput: '3', sl: on('price', '197.50') });
     const v = nv(s);
-    expect(qtyText(s, v, AAPL)).toMatchObject({ right: '0 shares', caption: 'Risk too small for 1 share (min 4.07 USD)', captionTone: 'error' });
-    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: 'Risk too small for 1 share (min 4.07 USD)', disabled: true });
+    expect(qtyText(s, v, AAPL)).toMatchObject({ right: '0 shares', captionTone: 'neutral' });
+    expect(informerFor(s, v, AAPL)).toMatchObject({ kind: 'error', text: 'Risk is below 1 share (4.07 USD)', field: 'qty' });
+    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: '0 AAPL · MKT', disabled: true });
   });
-  it('not enough margin: "Not enough margin for {shares} shares · max {max}", button "Not enough margin"', () => {
+  it('not enough margin: informer "Not enough margin for {shares} shares · max {max}", the button keeps the order text', () => {
     const s = st({ qtyUnit: 'riskMoney', qtyInput: '400000', sl: on('price', '197.50') });
     const v = nv(s);
-    expect(qtyText(s, v, AAPL)).toMatchObject({ caption: 'Not enough margin for 98,280 shares · max 24,793', captionTone: 'error' });
-    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: 'Not enough margin', disabled: true });
+    expect(informerFor(s, v, AAPL)).toMatchObject({ kind: 'error', text: 'Not enough margin for 98,280 shares · max 24,793', field: 'qty' });
+    expect(qtyText(s, v, AAPL).captionTone).toBe('neutral');
+    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: '98,280 AAPL · MKT', disabled: true });
     expect(v.canSubmit).toBe(false);
   });
 });
@@ -484,21 +491,23 @@ describe('Block 5. Exits: levels, Protected size, summary (Buy 100 AAPL @ 201.57
   it('Sell 100 @ Bid 201.56, SL 205.00, TP 195.00 → "SL −344.00 USD · TP +656.00 USD"', () => {
     expect(text(st({ side: 'sell', qtyInput: '100', sl: on('price', '205.00'), tp: on('price', '195.00') }))).toBe('SL −344.00 USD · TP +656.00 USD');
   });
-  it('exits above the order: caption under the list and "Reduce exits to 100 shares" on the button', () => {
+  it('exits above the order: informer "Exits exceed the order by 20 shares", the button keeps the order text', () => {
     const s = { ...base, levels: [lv(0.7, '206.00', '197.50'), lv(0.5, '211.00', '197.50')] };
     const v = nv(s);
     expect([v.protectedQty, v.exitsCaption, v.exitsError, v.canSubmit]).toEqual([120, 'Exits exceed the order by 20 shares', 'Reduce exits to 100 shares', false]);
-    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: 'Reduce exits to 100 shares', disabled: true });
+    expect(informerFor(s, v, AAPL)).toMatchObject({ kind: 'error', text: 'Exits exceed the order by 20 shares', field: 'levels' });
+    expect(submitText(s, v, AAPL)).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
   });
-  it('a stop loss / take profit on the wrong side: the leg is red, the button says why', () => {
+  it('a stop loss / take profit on the wrong side: the leg is red, the informer says why', () => {
     const slWrong = { ...base, levels: [lv(0.5, '206.00', '202.00'), lv(0.5, '211.00', '197.50')] };
     const v = nv(slWrong);
     expect(levelRowParts(slWrong, v, 0, AAPL)[1]).toMatchObject({ label: 'SL', tone: 'error' });
-    expect(submitText(slWrong, v, AAPL)).toMatchObject({ secondary: 'Stop loss must be below entry', disabled: true });
+    expect(informerFor(slWrong, v, AAPL)?.text).toBe('Stop loss must be below entry');
+    expect(submitText(slWrong, v, AAPL)).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
     const tpWrong = { ...base, levels: [lv(0.5, '190.00', '197.50'), lv(0.5, '211.00', '197.50')] };
-    expect(submitText(tpWrong, nv(tpWrong), AAPL).secondary).toBe('Take profit must be above entry');
+    expect(informerFor(tpWrong, nv(tpWrong), AAPL)?.text).toBe('Take profit must be above entry');
     const sellWrong = { ...base, side: 'sell' as const, levels: [lv(0.5, '190.00', '197.50'), lv(0.5, '195.00', '205.00')] };
-    expect(submitText(sellWrong, nv(sellWrong), AAPL).secondary).toBe('Stop loss must be above entry');
+    expect(informerFor(sellWrong, nv(sellWrong), AAPL)?.text).toBe('Stop loss must be above entry');
   });
   it('the order quantity changes: the levels keep their shares (99 → 51 / 24 / 24, 100 → 50 / 25 / 25), nothing drifts', () => {
     const q = (n: string) => nv({ ...three, qtyInput: n }).levels.map((l) => l.qty);
@@ -525,11 +534,12 @@ describe('Block 5. Exits: levels, Protected size, summary (Buy 100 AAPL @ 201.57
 });
 
 describe('Block 6. Market closed', () => {
-  it('banner text and "· at open" for Market; draft queued', () => {
-    const opensAt = new Date(2026, 9, 12, 15, 30).getTime(); // Monday
-    expect(marketClosedText(opensAt)).toBe('Market is closed · opens Mon 15:30');
+  it('warning informer in ET and "· at open" for Market (the button stays active); draft queued', () => {
+    const opensAt = Date.UTC(2026, 9, 12, 13, 30); // Monday 9:30 AM EDT
+    expect(marketClosedText(opensAt)).toBe('Market is closed · opens Mon 9:30 AM ET');
     const s = st({ qtyInput: '100' });
     const v = nv(s, { opensAt });
+    expect(informerFor(s, v, AAPL)).toEqual({ kind: 'warning', code: 'market-closed', text: 'Market is closed · opens Mon 9:30 AM ET', field: null });
     expect(submitText(s, v, AAPL).secondary).toBe('100 AAPL · MKT · at open');
     expect(v.draft?.activateAt).toBe(opensAt);
     const l = st({ type: 'limit', priceInput: '199', qtyInput: '100' });
@@ -846,5 +856,67 @@ describe('Forex: pips instead of ticks (EURUSD, USDJPY)', () => {
     const av = deriveTicket(a, { ...ctx, rules: NEW_RULES });
     expect(exitMenuValue('sl', 'ticks', a, av, AAPL)).toBe('407');
     expect(qtyText(a, av, AAPL).caption).toBe('Margin 403.14 USD · Tick 1.00 USD');
+  });
+});
+
+describe('Informer above the button (FR-8.7): one row per state', () => {
+  const nctx: TicketContext = { ...ctx, rules: NEW_RULES };
+  const run = (s: TicketState, c: TicketContext = nctx) => {
+    const v = deriveTicket(s, c);
+    return { v, informer: informerFor(s, v, AAPL), button: submitText(s, v, AAPL) };
+  };
+  it('form not filled: no informer, the button asks (Market / Limit)', () => {
+    expect(run(st()).informer).toBeNull();
+    expect(run(st()).button).toMatchObject({ secondary: 'Enter quantity to buy AAPL', disabled: true });
+    expect(run(st({ type: 'limit' })).button).toMatchObject({ secondary: 'Enter price and quantity', disabled: true });
+  });
+  it('SL on the wrong side (Buy below, Sell above): error, red SL, ordinary caption, inactive button with the order text', () => {
+    const buy = run(st({ qtyInput: '100', sl: on('price', '205') }));
+    expect(buy.informer).toEqual({ kind: 'error', code: 'sl-side', text: 'Stop loss must be below entry', field: 'sl' });
+    expect(buy.button).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
+    expect(exitText('sl', st({ qtyInput: '100', sl: on('price', '205') }), buy.v, AAPL)).toMatchObject({ caption: '+3.43 (+1.70%) from entry', captionTone: 'neutral' });
+    expect(run(st({ side: 'sell', qtyInput: '100', sl: on('price', '200') })).informer?.text).toBe('Stop loss must be above entry');
+  });
+  it('TP on the wrong side (Buy above, Sell below): error on TP', () => {
+    expect(run(st({ qtyInput: '100', tp: on('price', '199') })).informer).toEqual({ kind: 'error', code: 'tp-side', text: 'Take profit must be above entry', field: 'tp' });
+    expect(run(st({ side: 'sell', qtyInput: '100', tp: on('price', '210') })).informer?.text).toBe('Take profit must be below entry');
+    expect(run(st({ qtyInput: '100', tp: on('price', '199') })).button).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
+  });
+  it('risk below one share: error on Quantity, "0 shares" on the right, the button inactive', () => {
+    const r = run(st({ qtyUnit: 'riskMoney', qtyInput: '3', sl: on('price', '197.50') }));
+    expect(r.informer).toEqual({ kind: 'error', code: 'risk-below-one', text: 'Risk is below 1 share (4.07 USD)', field: 'qty' });
+    expect(r.button.disabled).toBe(true);
+  });
+  it('not enough margin: error on Quantity, caption "Margin … · Tick …" stays', () => {
+    const s = st({ qtyInput: '100' });
+    const r = run(s, { ...nctx, availableFunds: 100 });
+    expect(r.informer).toEqual({ kind: 'error', code: 'margin', text: 'Not enough margin for 100 shares · max 24', field: 'qty' });
+    expect(r.button).toMatchObject({ secondary: '100 AAPL · MKT', disabled: true });
+    expect(qtyText(s, r.v, AAPL).caption).toBe('Margin 403.14 USD · Tick 1.00 USD');
+  });
+  it('market closed: warning, the button is active with "· at open"', () => {
+    const opensAt = Date.UTC(2026, 9, 12, 13, 30);
+    const r = run(st({ qtyInput: '100' }), { ...nctx, opensAt });
+    expect(r.informer).toMatchObject({ kind: 'warning', text: 'Market is closed · opens Mon 9:30 AM ET', field: null });
+    expect(r.button).toMatchObject({ secondary: '100 AAPL · MKT · at open', disabled: false });
+  });
+  it('Fills now / Triggers now / May not fill: no informer, the tooltip over the field stays', () => {
+    const s = st({ type: 'limit', priceInput: '201.57', qtyInput: '100', priceStatus: 'fillsNow' });
+    const r = run(s);
+    expect(r.informer).toBeNull();
+    expect(priceWarning('buy', r.v)).toBe('Fills now: price is above Ask');
+  });
+  it('priority: SL and margin together → SL; an error beats the market-closed warning', () => {
+    const both = run(st({ qtyInput: '100', sl: on('price', '205') }), { ...nctx, availableFunds: 100, opensAt: Date.UTC(2026, 9, 12, 13, 30) });
+    expect(both.informer).toMatchObject({ kind: 'error', code: 'sl-side' });
+    const tpAndMargin = run(st({ qtyInput: '100', tp: on('price', '199') }), { ...nctx, availableFunds: 100 });
+    expect(tpAndMargin.informer?.code).toBe('tp-side');
+    const marginAndClosed = run(st({ qtyInput: '100' }), { ...nctx, availableFunds: 100, opensAt: Date.UTC(2026, 9, 12, 13, 30) });
+    expect(marginAndClosed.informer?.code).toBe('margin');
+  });
+  it('the summary is hidden while an error blocks the order', () => {
+    const r = run(st({ qtyInput: '100', sl: on('price', '205'), tp: on('price', '209') }));
+    expect(r.v.canSubmit).toBe(false);
+    expect(summaryParts(r.v, AAPL)).not.toBeNull(); // the panel shows it only when canSubmit
   });
 });

@@ -199,6 +199,7 @@ User stories:
 - FR-8.4. Limit: «100 AAPL · LMT 199.00 · till Oct 15». Для Limit срок важен: ордер молча сгорает.
 - FR-8.5. Неактивная кнопка: первая строка Buy / Sell, вторая — причина: «Enter quantity to buy AAPL», «Enter price and quantity», «Stop loss must be below entry», «Take profit must be above entry», «Set stop loss to calculate size», «Not enough margin». Для Sell знаки и стороны зеркальные.
 - FR-8.6. Сводка и кнопка закреплены внизу панели и не скроллятся.
+- FR-8.7. Причина блокировки — в информере над кнопкой (панель `new`), не на кнопке и не под полем. Информер: плашка шириной формы, радиус 6, отступы 8/12, иконка 16 px слева, текст 13 px, до двух строк. error: фон #FDECEE, иконка #F23645; warning: фон #FFF4E5, иконка #FF9800. aria-live: error — assertive, warning — polite. Порядок снизу вверх: информер-предупреждение → сводка → кнопка; информер-ошибка встаёт на место сводки. Одна причина за раз: ошибки полей сверху вниз (SL, TP, уровни), затем объём (риск меньше 1 акции) и маржа; ошибка важнее предупреждения. Клик по ошибке прокручивает к полю и ставит в него фокус. Кнопка при ошибке: вторая строка — текст ордера, кнопка неактивна; поле с ошибкой — красная рамка, красных подписей под полями нет. Тексты: «Stop loss must be below entry» (Sell: above), «Take profit must be above entry» (Sell: below), «Risk is below 1 share (4.07 USD)», «Not enough margin for {shares} shares · max {max}», «Market is closed · opens Mon 9:30 AM ET» (warning, кнопка активна, «· at open»). Fills now / Triggers now / May not fill — тултип над полем, информера нет. Баннер «Market is closed» над формой убран.
 
 ### FR-9. После отправки
 
@@ -261,7 +262,7 @@ User stories:
 
 ## Состояния, валидация и ошибки
 
-Каждая блокировка кнопки называет причину на кнопке и под полем. Ошибка не прячется только в цвете.
+Каждая блокировка называет причину в информере над кнопкой (FR-8.7), поле с ошибкой — красная рамка. Ошибка не прячется только в цвете.
 
 | Состояние | Где видно | Что показываем | Макет |
 |---|---|---|---|
@@ -270,14 +271,14 @@ User stories:
 | Заполненный Market | Сводка, кнопка | «SL … · TP …», «100 AAPL · MKT» | есть |
 | Заполненный Limit | Сводка, кнопка | «100 AAPL · LMT 199.00 · till Oct 15» | есть |
 | Buy Limit выше Ask | Поле цены | «Ask + 0.07» красным, «Fills now: price is above Ask» | нет |
-| SL не с той стороны | Поле SL, кнопка | «Stop loss must be below entry» под полем и на кнопке | нет |
-| TP не с той стороны | Поле TP, кнопка | «Take profit must be above entry» под полем и на кнопке | нет |
+| SL не с той стороны | Информер, поле SL | error «Stop loss must be below entry»; красная рамка SL, подпись «… from entry» обычная; кнопка с текстом ордера неактивна | да (4166:171912) |
+| TP не с той стороны | Информер, поле TP | error «Take profit must be above entry»; красная рамка TP | да |
 | Risk без SL | Quantity, кнопка | «—», «Set stop loss to calculate size» (подписи под полем нет) | нет |
 | Дробный объём в Risk | Поле SL, сводка | Округление вниз; фактический риск справа в SL и в сводке | нет |
-| Риск меньше одной акции | Quantity, кнопка | «0 shares», «Risk too small for 1 share (min 4.07 USD)» | нет |
+| Риск меньше одной акции | Информер, Quantity | error «Risk is below 1 share (4.07 USD)»; красная рамка Quantity | да |
 | Риск больше доступной маржи | Quantity, кнопка | Предупреждение, причина на кнопке | нет |
-| Нехватка средств | Quantity, кнопка | Причина на кнопке | нет |
-| Рынок закрыт | Баннер над формой | «Market is closed · opens Mon 15:30»; кнопка Market — «100 AAPL · MKT · at open» | нет |
+| Нехватка средств | Информер, Quantity | error «Not enough margin for {shares} shares · max {max}»; красная рамка Quantity, подпись «Margin … · Tick …» | да |
+| Рынок закрыт | Информер | warning «Market is closed · opens Mon 9:30 AM ET»; кнопка Market активна — «100 AAPL · MKT · at open» | да |
 | Уровни выхода > 100% | Exits | Не даём ввести больше остатка | нет |
 | Ордер отправлен (Market) | Уведомление | Результат + «Close position» (Market) или «Cancel» (Limit, Stop) | нет |
 | Меню единиц открыто | Лейбл поля | Все единицы с живыми значениями | позже |

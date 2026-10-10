@@ -281,3 +281,16 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - Switch off state follows Figma 4135:159173: track `#ddd` (`--nt-switch-off`), 14 px dot with a `0 1px 1px rgba(0,0,0,.04)` shadow. Only the new panel; the on state and the `current` panel are unchanged.
 - `docs/PRD.md` FR-6.3 replaced with the current wording from the source document. Other places in the PRD (Appendix D tables with grey money for off levels) are left as history; the prompt of 10 Oct wins.
 - Cursor over a switched-off field is the text cursor (like an input), not pointer as the 10 Oct prompt said — changed at the user's request.
+
+## OrderInformer (FR-8.7)
+
+- The reason for a blocked order is one informer above the button (`OrderInformer`, `informerFor` in `presenters.ts`); the red captions under Quantity / SL / TP / the list of exits and the "Market is closed" banner are gone. `current` is untouched.
+- The prompt's PRD sections FR-8.7 and "Состояния" were not in the source document yet; I wrote them into `docs/PRD.md` from the prompt.
+- Colours are tokens `--nt-informer-*` (light theme only, like the other `--nt-*`). The icon is a CSS circle with "!" as in Figma (4189:25056), not an SVG.
+- An error informer replaces the summary (the summary is hidden anyway while the order is blocked); the warning sits above the summary. One informer at a time: SL, TP, levels, risk below 1 share, margin, then the market-closed warning.
+- Exits (2+ levels): wrong side and "Exits exceed the order by N shares" are errors too (field `levels`; a click focuses the first level row). Not in the prompt's table; the old button texts "Reduce exits to N shares" are gone, the button shows the order text.
+- With Risk sizing and "0 shares" the button reads "0 AAPL · MKT" (the order text of an order with no shares). Say if it should read differently.
+- "Set stop loss to calculate size", "Minimum quantity", "Pick an expiry date" and the incomplete-form prompts stay on the button; they are not in the informer table.
+- The market-closed time is now the exchange's: "Mon 9:30 AM ET" (was the user's local 24 h time). For stocks only; other classes are never closed here.
+- Log: `informer_shown` (kind, code, field) once per change, `informer_click`.
+- The status icon (≈ → Figma wave) is a separate, still uncommitted change.

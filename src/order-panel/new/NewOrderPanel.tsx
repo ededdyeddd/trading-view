@@ -8,6 +8,7 @@ import { MAX_LEVELS, useTicketStore, type OrderTicket } from '../../order-ticket
 import type { LevelState } from '../../order-ticket/types';
 import { now, useTradingStore } from '../../store/tradingStore';
 import { useUiStore } from '../../store/uiStore';
+import { StatusIcon } from './ui/StatusIcon';
 import { MenuItem, Popover } from '../../ui/Popover';
 import { Checkbox } from '../../ui/Switch';
 import { SymbolLogo } from '../../ui/SymbolLogo';
@@ -34,7 +35,7 @@ import {
   exitHeadingText,
   levelPercentText,
   levelRowParts,
-  marketClosedText,
+  informerFor,
   placedToastText,
   priceLabel,
   priceSwapLabel,
@@ -51,7 +52,6 @@ import {
   expiresRowText,
 } from './presenters';
 import {
-  Banner,
   DateTimeField,
   ExitLevel,
   FieldCaption,
@@ -59,6 +59,7 @@ import {
   ExitProgress,
   InfoRow,
   LevelRow,
+  OrderInformer,
   OrderSummary,
   SegmentedControl,
   SettingsRow,
@@ -105,6 +106,24 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const qtyPh = qtyPlaceholder(state, slowView, spec);
   const submit = submitText(state, view, spec);
   const summary = view.canSubmit ? summaryParts(view, spec) : null;
+  const informer = informerFor(state, view, spec);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Log each informer once, when it appears or changes.
+  const informerKey = informer ? `${informer.kind}:${informer.code}` : null;
+  useEffect(() => {
+    if (informer) logEvent('informer_shown', { kind: informer.kind, code: informer.code, field: informer.field });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [informerKey]);
+  /** A click on an error informer scrolls to its field and focuses it. */
+  const goToInformerField = () => {
+    if (!informer?.field) return;
+    logEvent('informer_click', { kind: informer.kind, code: informer.code, field: informer.field });
+    const id = informer.field === 'qty' ? 'nt-qty' : informer.field === 'levels' ? 'nt-level-row-1' : `nt-${informer.field}-input`;
+    const el = panelRef.current?.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el?.focus({ preventScroll: true });
+  };
 
   // Log each distinct validation error the user runs into (once per change).
   const lastReason = useRef<string | null>(null);
@@ -233,7 +252,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
           suffix: text.suffix,
           right: text.right,
           rightTone: text.rightTone,
-          state: text.captionTone === 'error' ? 'error' : 'default',
+          state: informer?.field === kind ? 'error' : 'default',
           step: ex.unit === 'price' ? spec.tickSize : 1,
           decimals,
           onEnter: doSubmit,
@@ -258,7 +277,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   }
 
   return (
-    <div className={styles.panel} data-testid="order-panel" data-variant="new">
+    <div ref={panelRef} className={styles.panel} data-testid="order-panel" data-variant="new">
       <Header symbol={spec.symbol} />
       <div className={styles.px}>
         <SegmentedControl
@@ -276,11 +295,6 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
       ) : (
         <>
           <div className={styles.scroll}>
-            {view.opensAt !== null && (
-              <div className={`${styles.px} ${styles.banner}`}>
-                <Banner testId="nt-market-closed">{marketClosedText(view.opensAt)}</Banner>
-              </div>
-            )}
             <div className={`${styles.px} ${styles.bs}`}>
               <SideToggle
                 side={state.side}
@@ -357,7 +371,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                 suffix={qty.suffix}
                 right={qty.right}
                 rightTone={qty.rightTone}
-                state={qty.captionTone === 'error' ? 'error' : 'default'}
+                state={informer?.field === 'qty' ? 'error' : 'default'}
                 step={state.qtyUnit === 'units' ? spec.qtyStep : 1}
                 decimals={state.qtyUnit === 'units' ? qtyPrecision(spec) : 2}
                 onEnter={doSubmit}
@@ -390,11 +404,6 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                           />
                         </div>
                       ))}
-                      {view.exitsCaption && (
-                        <FieldCaption tone="error" testId="nt-exits-caption">
-                          {view.exitsCaption}
-                        </FieldCaption>
-                      )}
                     </>
                   ) : (
                     <>
@@ -475,6 +484,12 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
           </div>
 
           <div className={styles.footer}>
+            {/* The warning sits above the summary; an error takes the summary's place (the summary is hidden while the order is blocked). */}
+            {informer && (
+              <OrderInformer kind={informer.kind} onClick={informer.kind === 'error' && informer.field ? goToInformerField : undefined}>
+                {informer.text}
+              </OrderInformer>
+            )}
             <OrderSummary parts={summary}>
               <SubmitButton side={state.side} primary={submit.primary} secondary={submit.secondary} disabled={submit.disabled} onClick={doSubmit} />
             </OrderSummary>
@@ -492,8 +507,8 @@ function Header({ symbol }: { symbol: string }) {
       <div className={styles.title}>
         <SymbolLogo symbol={symbol} size={24} />
         <span className={styles.symbol}>{symbol}</span>
-        <span className={styles.status} title="Simulated / delayed data">
-          ≈
+        <span className={styles.status}>
+          <StatusIcon title="Simulated / delayed data" />
         </span>
       </div>
       <button type="button" className={styles.headerBtn} aria-label="Layout" title="Layout">

@@ -60,11 +60,6 @@ function shortDate(ts: number): string {
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function hhmm(ts: number): string {
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
 // ---------------------------------------------------------------------------
 // Limit / Stop price
 // ---------------------------------------------------------------------------
@@ -223,9 +218,9 @@ export function qtyPlaceholder(state: TicketState, view: TicketView, spec: Symbo
   }
 }
 
-/** "Risk too small for 1 share (min 4.07 USD)": the risk of one unit at the current stop loss. */
+/** "Risk is below 1 share (4.07 USD)": the risk of one unit at the current stop loss. */
 export function riskTooSmallText(riskPerUnit: number, spec: SymbolSpec): string {
-  return `Risk too small for 1 ${sharesWord(spec).replace(/s$/, '')} (min ${fmtMoney(riskPerUnit)} USD)`;
+  return `Risk is below 1 ${sharesWord(spec).replace(/s$/, '')} (${fmtMoney(riskPerUnit)} USD)`;
 }
 
 export function qtyText(state: TicketState, view: TicketView, spec: SymbolSpec): FieldText {
@@ -237,23 +232,15 @@ export function qtyText(state: TicketState, view: TicketView, spec: SymbolSpec):
   if (risk && view.qty.needsStopLoss) {
     return { suffix, right: '—', rightTone: 'neutral', caption: null, captionTone: 'neutral' };
   }
+  // Risk below one share: the reason is in the informer above the button (informerFor), not under the field.
   if (risk && view.qty.riskBelowOne && view.qty.riskPerUnit !== null) {
-    return { suffix, right: shares, rightTone: 'neutral', caption: riskTooSmallText(view.qty.riskPerUnit, spec), captionTone: 'error' };
+    return { suffix, right: shares, rightTone: 'neutral', caption: `Available margin ${fmtMoney(view.availableFunds)} USD`, captionTone: 'neutral' };
   }
   const availableMargin = `Available margin ${fmtMoney(view.availableFunds)} USD`;
   if (state.qtyInput.trim() === '') {
     return { suffix, right: qtyPlaceholder(state, view, spec).right, rightTone: 'muted', caption: availableMargin, captionTone: 'neutral' };
   }
   const right = state.qtyUnit === 'units' ? `${fmtMoney(view.qty.tradeValue)} USD` : shares;
-  if (units > 0 && view.marginExceeded) {
-    return {
-      suffix,
-      right,
-      rightTone: 'neutral',
-      caption: `Not enough margin for ${unitsText(units, spec)} · max ${fmtQty(view.qty.maxUnits, spec)}`,
-      captionTone: 'error',
-    };
-  }
   if (units > 0) {
     return {
       suffix,
@@ -355,7 +342,8 @@ export function exitText(kind: ExitKind, state: TicketState, view: TicketView, s
   const ex = view[kind];
   // Switched off: nothing on the right, not even money — the level reads as an action ("Set at …"), not as a filled field.
   if (!ex.enabled) return { suffix: '', right: '', rightTone: 'neutral', caption: null, captionTone: 'neutral' };
-  return levelText(kind, ex.unit, ex.level, state.side, spec, view.qty.units > 0);
+  // A wrong-side level keeps its normal caption ("… from entry"); the error is in the informer above the button.
+  return levelText(kind, ex.unit, ex.level && { ...ex.level, invalid: false }, state.side, spec, view.qty.units > 0);
 }
 
 /** The value a switched-off level gets, in its current unit and without a suffix ("197.54", "403"); '' when it cannot be computed. */
@@ -560,25 +548,57 @@ export function submitText(state: TicketState, view: TicketView, spec: SymbolSpe
   const needPrice = state.type !== 'market' && view.price?.value == null;
   if (!view.ready) return block('Waiting for market data');
   if (isRiskUnit(state.qtyUnit) && view.qty.needsStopLoss) return block('Set stop loss to calculate size');
-  if (view.qty.riskBelowOne && view.qty.riskPerUnit !== null) return block(riskTooSmallText(view.qty.riskPerUnit, spec));
-  if (needPrice && !(view.qty.units > 0)) return block('Enter price and quantity');
+  const riskLow = view.qty.riskBelowOne && view.qty.riskPerUnit !== null;
+  if (needPrice && !(view.qty.units > 0) && !riskLow) return block('Enter price and quantity');
   if (needPrice) return block('Enter price');
-  if (!(view.qty.units > 0)) return block(`Enter quantity to ${verb} ${spec.symbol}`);
-  if (view.qty.units < spec.minQty) return block(`Minimum quantity is ${fmtQty(spec.minQty, spec)}`);
+  if (!(view.qty.units > 0) && !riskLow) return block(`Enter quantity to ${verb} ${spec.symbol}`);
+  if (view.qty.units > 0 && view.qty.units < spec.minQty) return block(`Minimum quantity is ${fmtQty(spec.minQty, spec)}`);
   for (const kind of state.levels.length >= 2 ? [] : (['sl', 'tp'] as const)) {
     const ex = view[kind];
-    if (!ex.enabled) continue;
-    if (!ex.level) return block(`Enter ${exitTitle(kind).toLowerCase()}`);
-    if (ex.level.invalid) return block(exitWrongSideText(kind, state.side));
+    if (ex.enabled && !ex.level) return block(`Enter ${exitTitle(kind).toLowerCase()}`);
   }
-  if (view.exitsError) return block(view.exitsError);
-  if (view.marginExceeded) return block('Not enough margin');
+  // A reason with its own informer above the button: the button keeps the order text and is inactive.
+  const informer = informerFor(state, view, spec);
+  if (informer?.kind === 'error') return { primary, secondary: orderLine(state, view, spec), disabled: true, reason: informer.text };
   if (!view.canSubmit || !view.draft) return block(view.disabledText ?? 'Check the order');
+  return { primary, secondary: orderLine(state, view, spec), disabled: false, reason: null };
+}
+
+/** The second line of the button: "100 AAPL · MKT", "100 AAPL · LMT 199.00 · till Oct 15". */
+export function orderLine(state: TicketState, view: TicketView, spec: SymbolSpec): string {
   const qty = `${fmtQty(view.qty.units, spec)} ${spec.symbol}`;
-  if (state.type === 'market') return { primary, secondary: `${qty} · MKT${view.opensAt !== null ? ' · at open' : ''}`, disabled: false, reason: null };
-  const px = fmtPrice(view.price!.value!, spec, { grouping: false });
+  if (state.type === 'market') return `${qty} · MKT${view.opensAt !== null ? ' · at open' : ''}`;
+  const px = fmtPrice(view.price?.value ?? view.price?.placeholder ?? 0, spec, { grouping: false });
   const till = view.expiresAt !== null ? ` · ${tillText(state, view.expiresAt, spec)}` : '';
-  return { primary, secondary: `${qty} · ${TYPE_SHORT[state.type]} ${px}${till}`, disabled: false, reason: null };
+  return `${qty} · ${TYPE_SHORT[state.type]} ${px}${till}`;
+}
+
+export type InformerCode = 'sl-side' | 'tp-side' | 'levels' | 'risk-below-one' | 'margin' | 'market-closed';
+/** The field an informer points at: its border turns red and a click on the informer focuses it. */
+export type InformerField = 'sl' | 'tp' | 'levels' | 'qty';
+export type Informer = { kind: 'error' | 'warning'; code: InformerCode; text: string; field: InformerField | null };
+
+/**
+ * The one reason shown above the button (FR-8.7): field errors top to bottom (SL, TP, the levels), then the volume
+ * (risk below one share) and the margin; an error beats the warning ("Market is closed"). Null when there is nothing to say.
+ */
+export function informerFor(state: TicketState, view: TicketView, spec: SymbolSpec): Informer | null {
+  if (!view.ready) return null;
+  const error = (code: InformerCode, text: string, field: InformerField): Informer => ({ kind: 'error', code, text, field });
+  if (state.levels.length >= 2) {
+    if (view.exitsError) return error('levels', view.exitsCaption ?? view.exitsError, 'levels');
+  } else {
+    for (const kind of ['sl', 'tp'] as const) {
+      const ex = view[kind];
+      if (ex.enabled && ex.level?.invalid) return error(`${kind}-side`, exitWrongSideText(kind, state.side), kind);
+    }
+  }
+  if (view.qty.riskBelowOne && view.qty.riskPerUnit !== null) return error('risk-below-one', riskTooSmallText(view.qty.riskPerUnit, spec), 'qty');
+  if (view.qty.units > 0 && view.marginExceeded) {
+    return error('margin', `Not enough margin for ${unitsText(view.qty.units, spec)} · max ${fmtQty(view.qty.maxUnits, spec)}`, 'qty');
+  }
+  if (view.opensAt !== null) return { kind: 'warning', code: 'market-closed', text: marketClosedText(view.opensAt), field: null };
+  return null;
 }
 
 const TIF_LABEL: Record<TimeInForce, string> = { day: 'Day', week: 'Week', month: 'Month', gtd: 'On date (GTD)' };
@@ -632,10 +652,11 @@ export function expiresMenuItem(tif: TimeInForce, now: number, state: TicketStat
   return { label: TIF_LABEL[tif], value: expiresValue(tif, now, state, spec) };
 }
 
-/** "Market is closed · opens Mon 15:30" in local time. */
+/** "Market is closed · opens Mon 9:30 AM ET": the exchange's time zone, not the user's. */
 export function marketClosedText(opensAt: number): string {
-  const d = new Date(opensAt);
-  return `Market is closed · opens ${d.toLocaleDateString('en-US', { weekday: 'short' })} ${hhmm(opensAt)}`;
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+  const p = Object.fromEntries(f.formatToParts(new Date(opensAt)).map((x) => [x.type, x.value]));
+  return `Market is closed · opens ${p.weekday} ${p.hour}:${p.minute} ${p.dayPeriod} ET`;
 }
 
 /** Toast after a market fill: "Bought 100 AAPL at 201.57". */

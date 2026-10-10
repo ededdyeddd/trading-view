@@ -8,6 +8,8 @@ export type TicketEventType =
   | 'unit_change'
   | 'field_change'
   | 'toggle_change'
+  | 'informer_shown'
+  | 'informer_click'
   | 'submit'
   | 'submit_result'
   | 'validation_error'

@@ -43,15 +43,9 @@
 
 .status {
   margin-left: 8px;
+  display: inline-flex;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  background: var(--nt-status-bg);
-  color: var(--nt-status-fg);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
 }
 
 .headerBtn {
@@ -170,10 +164,6 @@
   flex: none;
   padding: 16px;
   background: var(--nt-bg);
-}
-
-.banner {
-  padding-top: 12px;
 }
 
 /* TP levels 2–3 */

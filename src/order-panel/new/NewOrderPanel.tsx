@@ -4,14 +4,14 @@ import { logEvent } from '../../analytics/eventLog';
 import { getSpec, pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber, fmtPrice, fmtQty } from '../../lib/format';
 import type { ExitKind, OrderType } from '../../lib/orderMath';
-import { MAX_PARTIALS, useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
-import type { PartialState } from '../../order-ticket/types';
+import { MAX_LEVELS, useTicketStore, type OrderTicket } from '../../order-ticket/ticketStore';
+import type { LevelState } from '../../order-ticket/types';
 import { now, useTradingStore } from '../../store/tradingStore';
 import { useUiStore } from '../../store/uiStore';
 import { MenuItem, Popover } from '../../ui/Popover';
 import { Checkbox } from '../../ui/Switch';
 import { SymbolLogo } from '../../ui/SymbolLogo';
-import { ExitLevelsPanel } from './ExitLevelsPanel';
+import { ExitLevelEditor } from './ExitLevelEditor';
 import styles from './NewOrderPanel.module.css';
 import {
   QTY_UNITS,
@@ -27,10 +27,10 @@ import {
   fillToastText,
   formatExitInput,
   formatQtyInput,
-  level1Parts,
+  exitHeadingText,
   levelPercentText,
+  levelRowParts,
   marketClosedText,
-  partialParts,
   placedToastText,
   priceLabel,
   priceSwapLabel,
@@ -86,9 +86,10 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const { state, view, slowView, labelQuote, spec, quote } = ticket;
   const t = useTicketStore.getState();
   const [tab, setTab] = useState<'order' | 'dom'>('order');
-  const [screen, setScreen] = useState<'order' | 'levels'>('order');
-  /** Partial exits as they were when the Exit levels screen opened (Discard restores them). */
-  const [partialsSnapshot, setPartialsSnapshot] = useState<PartialState[]>([]);
+  /** The level editor: data index of the level being edited, or null. */
+  const [editing, setEditing] = useState<number | null>(null);
+  /** The levels as they were when the editor opened (Discard restores them). */
+  const [levelsSnapshot, setLevelsSnapshot] = useState<LevelState[]>([]);
   const [exitsOpen, setExitsOpen] = useState(true);
   const [extraOpen, setExtraOpen] = useState(false);
   const [tifOpen, setTifOpen] = useState(false);
@@ -99,7 +100,7 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const qty = qtyText(state, state.qtyInput.trim() === '' ? slowView : view, spec);
   const qtyPh = qtyPlaceholder(state, slowView, spec);
   const submit = submitText(state, view, spec);
-  const summary = view.canSubmit ? summaryParts(view) : null;
+  const summary = view.canSubmit ? summaryParts(view, spec) : null;
 
   // Log each distinct validation error the user runs into (once per change).
   const lastReason = useRef<string | null>(null);
@@ -111,12 +112,20 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
     lastReason.current = key;
   }, [submit.reason]);
 
-  /** Opens the Exit levels screen; `add` appends a new level first. */
-  const openLevels = (add: boolean) => {
-    setPartialsSnapshot(state.partials);
-    if (add && (state.partials.length === 0 || state.partials.length < MAX_PARTIALS)) t.addPartial(view);
-    setScreen('levels');
+  /** Opens the editor of a level. */
+  const openEditor = (index: number) => {
+    setLevelsSnapshot(state.levels);
+    setEditing(index);
   };
+  /** "+ Add partial exit": splits the last level and opens the editor of the new one. */
+  const addExit = () => {
+    setLevelsSnapshot(state.levels);
+    const index = t.addLevel(view);
+    if (index !== null) setEditing(index);
+  };
+  // The last level in the list (single level: the whole order) must hold at least 2 steps to be split.
+  const lastQty = state.levels.length ? view.levels[view.levelOrder[view.levelOrder.length - 1]]?.qty : view.qty.units;
+  const canSplit = (lastQty ?? 0) >= 2 * spec.qtyStep - 1e-9 && view.levelEntry !== null && state.levels.length < MAX_LEVELS;
 
   const doSubmit = () => {
     if (submit.disabled || !view.draft) {
@@ -229,10 +238,10 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
   const slHasCaption = view.sl.enabled && !!exitText('sl', state, view, spec).caption;
   const today = now();
 
-  if (screen === 'levels') {
+  if (editing !== null) {
     return (
       <div className={styles.panel} data-testid="order-panel" data-variant="new">
-        <ExitLevelsPanel ticket={ticket} snapshot={partialsSnapshot} onClose={() => setScreen('order')} />
+        <ExitLevelEditor ticket={ticket} index={editing} snapshot={levelsSnapshot} onClose={() => setEditing(null)} />
       </div>
     );
   }
@@ -356,20 +365,25 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
               <SettingsRow title="Exits" chevron={exitsOpen ? 'up' : 'down'} onClick={() => setExitsOpen((v) => !v)} testId="nt-exits-toggle" />
               {exitsOpen && (
                 <div className={styles.exits}>
-                  {state.partials.length > 0 ? (
+                  {state.levels.length > 0 ? (
                     <>
-                      <ExitProgress label="Protected size" percent={view.protectedPercent} />
-                      {[0, ...state.partials.map((_, i) => i + 1)].map((n) => (
-                        <div key={n} className={styles.levelGap}>
+                      <ExitProgress label="Protected size" percent={view.protectedPercent} percentText={levelPercentText(view.protectedPercent)} />
+                      {view.levelOrder.map((i, pos) => (
+                        <div key={i} className={styles.levelGap}>
                           <LevelRow
-                            testId={`nt-level-row-${n + 1}`}
-                            title={`Level ${n + 1} ∙ ${levelPercentText(n === 0 ? (view.qty.units > 0 ? (view.level1Qty / view.qty.units) * 100 : 0) : view.partials[n - 1].percent)}`}
-                            legs={n === 0 ? level1Parts(view, spec) : partialParts(state, view, n - 1, spec)}
-                            onOpen={() => openLevels(false)}
-                            onRemove={() => (n === 0 ? t.removeLevel1() : t.removePartial(n - 1))}
+                            testId={`nt-level-row-${pos + 1}`}
+                            title={exitHeadingText(pos + 1, view.levels[i].qty, view.levels[i].percent, spec)}
+                            parts={levelRowParts(state, view, i, spec)}
+                            onOpen={() => openEditor(i)}
+                            onRemove={() => t.removeLevel(i, view)}
                           />
                         </div>
                       ))}
+                      {view.exitsCaption && (
+                        <FieldCaption tone="error" testId="nt-exits-caption">
+                          {view.exitsCaption}
+                        </FieldCaption>
+                      )}
                     </>
                   ) : (
                     <>
@@ -383,14 +397,9 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                       )}
                     </>
                   )}
-                  {((state.sl.enabled && state.tp.enabled) || state.partials.length > 0) && (
-                    <div className={`${styles.addLevel} ${state.partials.length > 0 ? styles.addLevelAfterLevels : view.riskReward === null ? styles.addLevelAlone : ''}`}>
-                      <TextButton
-                        onClick={() => openLevels(true)}
-                        disabled={state.partials.length >= MAX_PARTIALS}
-                        disabledReason="Maximum number of levels"
-                        testId="nt-partial-exit"
-                      >
+                  {((state.sl.enabled && state.tp.enabled) || state.levels.length > 0) && (
+                    <div className={`${styles.addLevel} ${state.levels.length > 0 ? styles.addLevelAfterLevels : view.riskReward === null ? styles.addLevelAlone : ''}`}>
+                      <TextButton onClick={addExit} disabled={!canSplit} disabledReason="Not enough shares to split" testId="nt-partial-exit">
                         Add partial exit
                       </TextButton>
                     </div>

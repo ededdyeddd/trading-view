@@ -240,3 +240,16 @@ Source: the Figma frames `4116:117479` (Market / Limit · Empty / Filled, unit-m
 - **Summary** with several levels: `SL −407.00 USD · TP up to +943.00 USD · 3 exits` (SL / TP are totals over the levels). SL in a pill is `#ff9800` (the frame), in the summary `#e78a00` (earlier prompt); two tokens, `--nt-pill-sl` and `--color-sl`.
 
 - **Price warnings are red.** "Fills now" / "Triggers now" (field border, right text, caption) use the error colour although they do not block the button (user, 10 Oct). Warnings in the order summary ("N shares without SL/TP", "No stop loss") stay orange.
+
+# Exits: levels per the 10 Oct spec (replaces the "Exit levels" screen with Level 1 / Level 2)
+
+The spec pasted on 10 Oct changed the model; where it differs from the earlier steps above, **this is current**:
+
+- **Every level has explicit shares** (`TicketState.levels`, each a *fraction of the order* + TP / SL legs). One level = the plain SL / TP fields (`levels` is empty, never of length 1). Level quantities are derived: `scaleLevels(fracs, orderQty)` rounds down per level and gives the rounding leftover to Exit 1, so a floating order quantity (risk sizing at Market) never drifts the levels. A user edit of one level's shares keeps what the others show now; shares can add up to less than the order (unprotected, orange warning) or more (error).
+- **Rows** on the panel are sorted by TP (nearest first), headed "Exit n · 50 shares · 50%"; a row opens the **level editor** (shares, TP, SL, "Remove exit"); "+ Add partial exit" splits the last level and opens the editor of the new one. This replaces the screen with Level 1 / Level 2 cards and the "Level 1 ∙ 50%" headings of Figma 4135:149017.
+- **Protected size** = Σ level shares / order (no longer "shares with an SL"); text "Protected size · 100%" (≤ 2 decimals, no trailing zeros).
+- **Removing** a level gives its shares to the previous row (the next one for the first); removing down to one level restores the SL / TP fields with that level's values. 0 shares in the editor removes the level on Confirm. Confirm is never disabled: problems show in the list and on the button.
+- **"Add partial exit" is disabled when the last level has fewer than 2 lot steps** ("Not enough shares to split") — also with 1 share and with no quantity. This reverses the earlier "available with 1 share, Level 2 starts empty".
+- **Summary** (pure `exitsSummary`): `SL −407.00 USD · TP up to +818.00 USD · 3 exits`, orange warnings `20 shares without SL/TP` / `No stop loss`, "N exits" dropped first when the line does not fit (at 320 px it often is), R:R not shown. The reason strings: `Reduce exits to 100 shares`, `Stop loss must be below entry`, `Take profit must be above entry`.
+- **Risk sizing** with levels uses the share-weighted average stop distance (levels without an SL do not count). Stop losses of levels cannot use Risk USD / Risk % balance while Quantity is in a risk mode (same as the single SL).
+- Up to 5 levels (`MAX_LEVELS`; the spec gives no limit). Chart lines: `SL1…` / `TP1…` per level, draggable.

@@ -559,6 +559,26 @@
   color: var(--nt-summary-amount);
 }
 
+.summaryWarning {
+  color: var(--color-warning);
+}
+
+/* every segment on one line; the probe measures the full text and is not shown */
+.summarySeg {
+  white-space: nowrap;
+}
+
+.summaryProbe {
+  position: absolute;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.levelError {
+  color: var(--nt-text-danger);
+}
+
 .summarySep {
   color: var(--nt-text-secondary);
 }
@@ -592,6 +612,7 @@
 }
 
 .summary {
+  position: relative;
   padding: 4px 8px 0;
   text-align: center;
   font-size: 13px;

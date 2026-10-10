@@ -1,5 +1,5 @@
 import type { TimeInForce, OrderDraft } from '../engine/types';
-import type { ExitLevel, ExitUnit, OrderType, PriceStatus, QtyUnit, Side } from '../lib/orderMath';
+import type { ExitLevel, ExitUnit, ExitsSummary, OrderType, PriceStatus, QtyUnit, Side } from '../lib/orderMath';
 
 export type ExitState = {
   enabled: boolean;
@@ -30,32 +30,31 @@ export type TicketState = {
   gtdDate: string;
   /** GTD time as HH:MM ('' = end of day). */
   gtdTime: string;
-  /** Partial exits (Level 2, 3 …); Level 1 is the stop loss / take profit above and gets the remaining shares. */
-  partials: PartialState[];
+  /** Exits (levels). [] = one level: the stop loss / take profit above. 2+ = the list of levels (the SL / TP fields are hidden). */
+  levels: LevelState[];
   fillOutsideRth: boolean;
 };
 
 export type PriceUnit = 'price' | 'offset';
 
-/** A leg of a partial exit: empty input = no leg. */
-export type PartialLeg = { unit: ExitUnit; input: string };
+/** A leg of a level: empty input = off. */
+export type LevelLeg = { unit: ExitUnit; input: string };
 
-/** One partial exit (Level 2+): its shares (in units, or in % of the position) with its own take profit and stop loss. */
-export type PartialState = { qtyInput: string; qtyUnit: 'units' | 'percent'; tp: PartialLeg; sl: PartialLeg };
+/** One level of a multi-level exit: its share of the order (the quantity follows the order quantity) with a TP and an SL. */
+export type LevelState = { frac: number; tp: LevelLeg; sl: LevelLeg };
 
-export type PartialLegView = {
+export type LevelLegView = {
   level: ExitLevel | null;
   error: string | null;
 };
 
-export type PartialView = {
-  /** Shares after rounding down. */
+export type LevelView = {
+  /** Shares after scaling to the order quantity (rounded down; the leftover is on Exit 1). */
   qty: number;
-  /** Share of the position, %. */
+  /** Share of the order, %. */
   percent: number;
-  qtyError: string | null;
-  tp: PartialLegView;
-  sl: PartialLegView;
+  tp: LevelLegView;
+  sl: LevelLegView;
 };
 
 export type ExitView = {
@@ -151,18 +150,21 @@ export type TicketView = {
   qty: QtyView;
   sl: ExitView;
   tp: ExitView;
-  /** Level 1's shares: the quantity minus the partial exits. */
-  level1Qty: number;
-  /** Partial exits (Level 2+), in order. */
-  partials: PartialView[];
-  /** First problem of the partial exits (also blocks submit), else null. */
-  partialsError: string | null;
-  /** Share of the position covered by a stop loss, %. */
+  /** The levels in data order (same indices as TicketState.levels); empty with one level. */
+  levels: LevelView[];
+  /** Data indices in display order: nearest take profit first (Buy ascending, Sell descending), no TP last. */
+  levelOrder: number[];
+  /** Entry the levels are priced from: the price, or the price placeholder while it is empty. */
+  levelEntry: number | null;
+  /** Shares covered by the levels (one level = the whole order). */
+  protectedQty: number;
   protectedPercent: number;
-  /** Total loss at the stops (negative) and profit at the take profits over all levels; null without any. */
-  slMoney: number | null;
-  tpMoney: number | null;
-  /** Total reward / total risk over all levels; null unless every level has both legs. */
+  /** Totals over the levels for the summary above the button; null without any SL / TP. */
+  summary: ExitsSummary | null;
+  /** What blocks submit in the exits, with the reason for the button: "Reduce exits to 100 shares", "Stop loss must be below entry". */
+  exitsError: string | null;
+  /** "Exits exceed the order by 20 shares" under the list. */
+  exitsCaption: string | null;
   riskReward: number | null;
   expiresAt: number | null;
   availableFunds: number;

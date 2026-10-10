@@ -41,7 +41,7 @@ function sharesWord(spec: SymbolSpec): string {
 }
 
 /** "1 share", "100 shares". */
-function unitsText(qty: number, spec: SymbolSpec): string {
+export function unitsText(qty: number, spec: SymbolSpec): string {
   const word = sharesWord(spec);
   return `${fmtQty(qty, spec)} ${qty === 1 ? word.replace(/s$/, '') : word}`;
 }
@@ -404,7 +404,7 @@ export function levelMenuValue(unit: ExitUnit, typed: { unit: ExitUnit; input: s
   return exitValueText(unit, v, spec);
 }
 
-/** "Buy Limit 100 @ 199.00" — the order the Exit levels screen belongs to. */
+/** "Buy Limit 100 @ 199.00" — the order the level editor belongs to. */
 export function orderTitleText(state: TicketState, view: TicketView, spec: SymbolSpec): string {
   const type = state.type === 'market' ? 'Market' : state.type === 'limit' ? 'Limit' : 'Stop';
   const side = state.side === 'buy' ? 'Buy' : 'Sell';
@@ -413,49 +413,39 @@ export function orderTitleText(state: TicketState, view: TicketView, spec: Symbo
   return `${side} ${type}${qty}${px}`;
 }
 
-/** "50%", "33.33%": the share without trailing zeros (Level rows on the main panel). */
+/** "50%", "33.33%", "0.24%": at most 2 decimals, no trailing zeros. */
 export function levelPercentText(percent: number): string {
   return `${fmtNumber(percent, 2).replace(/\.?0+$/, '')}%`;
 }
 
-/** The legs of partial exit `index` (0 = Level 2) as "TP 25 @ 211.00" / "SL 25 @ 197.50". */
-export function partialParts(state: TicketState, view: TicketView, index: number, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
-  const p = view.partials[index];
-  const parts: { label: 'TP' | 'SL'; text: string }[] = [];
-  for (const kind of ['tp', 'sl'] as const) {
-    const text = legLineText(p.qty, p[kind].level, state.partials[index][kind], spec);
-    if (text) parts.push({ label: kind === 'tp' ? 'TP' : 'SL', text });
-  }
-  return parts;
+/** Heading of a level: "Exit 1 · 50 shares · 50%" (n counts from 1 in the order of the list). */
+export function exitHeadingText(n: number, qty: number, percent: number, spec: SymbolSpec): string {
+  return `Exit ${n} · ${unitsText(qty, spec)} · ${levelPercentText(percent)}`;
 }
 
-/** "Level 2 · 20.00%". */
-export function levelHeadingText(index: number, percent: number): string {
-  return `Level ${index + 1} · ${fmtNumber(percent, 2)}%`;
+/** One part of a level row: `TP 50 @ 206.00`, `TP off`, `SL off` (orange), a wrong-side leg is red. */
+export type LevelRowPart = { label: 'TP' | 'SL'; text: string; tone: 'normal' | 'off' | 'error' };
+
+/** Row of a level: "TP 50 @ 206.00 · SL 50 @ 197.50". Prices to the symbol's precision, shares without trailing zeros. */
+export function levelRowParts(state: TicketState, view: TicketView, index: number, spec: SymbolSpec): LevelRowPart[] {
+  const v = view.levels[index];
+  return (['tp', 'sl'] as const).map((kind) => {
+    const leg = v[kind];
+    const label = kind === 'tp' ? 'TP' : 'SL';
+    const typed = state.levels[index][kind];
+    if (leg.error) return { label, text: `${fmtQty(v.qty, spec)} @ ${legPriceText(leg.level, typed, spec) ?? DASH}`, tone: 'error' as const };
+    const price = legPriceText(leg.level, typed, spec);
+    if (price === null) return { label, text: 'off', tone: 'off' as const };
+    return { label, text: `${fmtQty(v.qty, spec)} @ ${price}`, tone: 'normal' as const };
+  });
 }
 
-/** Parts of the Level 1 summary row: "TP 60 @ 205.00" · "SL 60 @ 199.00" (a leg that is off is left out). */
-export function level1Parts(view: TicketView, spec: SymbolSpec): { label: 'TP' | 'SL'; text: string }[] {
-  const parts: { label: 'TP' | 'SL'; text: string }[] = [];
-  for (const kind of ['tp', 'sl'] as const) {
-    const ex = view[kind];
-    if (!ex.enabled) continue;
-    const text = legLineText(view.level1Qty, ex.level, { unit: ex.unit, input: ex.input }, spec);
-    if (text) parts.push({ label: kind === 'tp' ? 'TP' : 'SL', text });
-  }
-  return parts;
-}
-
-/**
- * "60 @ 205.00": the shares and the level's price. Before an entry price exists the level is not computed, so the typed
- * value stands in ("— @ 206.96", or "4 % of price" in a unit that needs the entry); an empty leg has no line.
- */
-function legLineText(qty: number, level: ExitLevel | null, typed: { unit: ExitUnit; input: string }, spec: SymbolSpec): string | null {
-  if (level && !level.invalid) return `${fmtQty(qty, spec)} @ ${fmtPrice(level.price, spec)}`;
+/** The price of a leg: the level's, else the typed price (before an entry exists); null when the leg is off. */
+function legPriceText(level: ExitLevel | null, typed: { unit: ExitUnit; input: string }, spec: SymbolSpec): string | null {
+  if (level) return fmtPrice(level.price, spec);
   const n = parseNum(typed.input);
   if (!Number.isFinite(n)) return null;
-  const shares = qty > 0 ? fmtQty(qty, spec) : DASH;
-  return typed.unit === 'price' ? `${shares} @ ${fmtPrice(n, spec)}` : `${shares} @ ${formatExitInput(typed.input, typed.unit, spec)} ${exitUnitLabel('tp', typed.unit)}`;
+  return typed.unit === 'price' ? fmtPrice(n, spec) : `${formatExitInput(typed.input, typed.unit, spec)} ${exitUnitLabel('tp', typed.unit)}`;
 }
 
 /**
@@ -497,24 +487,37 @@ export function riskRewardText(rr: number): string {
   return `1 : ${fmtNumber(rr, 2)}`;
 }
 
-export type SummaryPart = { label: 'SL' | 'TP' | null; /** "up to" before the amount */ prefix?: string; amount: string };
+/** A segment of the summary above the button. */
+export type SummaryPart = {
+  label: 'SL' | 'TP' | null;
+  /** "up to" before the amount */
+  prefix?: string;
+  amount: string;
+  kind: 'sl' | 'tp' | 'exits' | 'warning';
+};
 
 /**
- * Summary above the button: "SL −407.00 USD · TP +943.00 USD". With partial exits the take profit is the most the
- * levels can earn and the exit count follows: "SL −407.00 USD · TP up to +943.00 USD · 3 exits".
+ * Summary above the button, segments in this order: SL total · TP total ("up to" with 2+ take profits) · "N exits" (2+
+ * levels) · warnings. R:R is not shown here.
+ *   SL −407.00 USD · TP up to +818.00 USD · 3 exits
+ *   SL −325.60 USD · TP +754.40 USD · 20 shares without SL/TP
+ *   TP +943.00 USD · No stop loss
  */
-export function summaryParts(view: TicketView): SummaryPart[] | null {
+export function summaryParts(view: TicketView, spec: SymbolSpec): SummaryPart[] | null {
+  const m = view.summary;
+  if (!m) return null;
   const parts: SummaryPart[] = [];
-  const levels = view.partials.length + 1;
-  if (view.slMoney !== null) parts.push({ label: 'SL', amount: signedMoney(view.slMoney) });
-  if (view.tpMoney !== null) parts.push({ label: 'TP', prefix: levels > 1 ? 'up to' : undefined, amount: signedMoney(view.tpMoney) });
-  if (parts.length && levels > 1) parts.push({ label: null, amount: `${levels} exits` });
+  if (m.sl !== null) parts.push({ label: 'SL', amount: signedMoney(m.sl), kind: 'sl' });
+  if (m.tp !== null) parts.push({ label: 'TP', prefix: m.tpCount >= 2 ? 'up to' : undefined, amount: signedMoney(m.tp), kind: 'tp' });
+  if (m.levels >= 2) parts.push({ label: null, amount: `${m.levels} exits`, kind: 'exits' });
+  if (m.unprotectedQty > 0) parts.push({ label: null, amount: `${unitsText(m.unprotectedQty, spec)} without SL/TP`, kind: 'warning' });
+  if (m.noStop) parts.push({ label: null, amount: 'No stop loss', kind: 'warning' });
   return parts.length ? parts : null;
 }
 
 /** Plain-text summary. */
-export function summaryText(view: TicketView): string | null {
-  return summaryParts(view)?.map((p) => [p.label, p.prefix, p.amount].filter(Boolean).join(' ')).join(' · ') ?? null;
+export function summaryText(view: TicketView, spec: SymbolSpec): string | null {
+  return summaryParts(view, spec)?.map((p) => [p.label, p.prefix, p.amount].filter(Boolean).join(' ')).join(' · ') ?? null;
 }
 
 export type SubmitText = { primary: string; secondary: string; disabled: boolean; reason: string | null };
@@ -538,13 +541,13 @@ export function submitText(state: TicketState, view: TicketView, spec: SymbolSpe
   if (needPrice) return block('Enter price');
   if (!(view.qty.units > 0)) return block(`Enter quantity to ${verb} ${spec.symbol}`);
   if (view.qty.units < spec.minQty) return block(`Minimum quantity is ${fmtQty(spec.minQty, spec)}`);
-  for (const kind of ['sl', 'tp'] as const) {
+  for (const kind of state.levels.length >= 2 ? [] : (['sl', 'tp'] as const)) {
     const ex = view[kind];
     if (!ex.enabled) continue;
     if (!ex.level) return block(`Enter ${exitTitle(kind).toLowerCase()}`);
     if (ex.level.invalid) return block(exitWrongSideText(kind, state.side));
   }
-  if (view.partialsError) return block(view.partialsError);
+  if (view.exitsError) return block(view.exitsError);
   if (view.marginExceeded) return block('Not enough margin');
   if (!view.canSubmit || !view.draft) return block(view.disabledText ?? 'Check the order');
   const qty = `${fmtQty(view.qty.units, spec)} ${spec.symbol}`;

@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { getSpec } from '../config/symbols';
 import {
   checkPrice,
+  exitsSummary,
+  nextLevel,
+  scaleLevels,
+  sortLevelIndices,
   convertRisk,
   defaultRiskInput,
   describeExit,
@@ -215,5 +219,63 @@ describe('risk input default (1% of balance)', () => {
   it('converts a typed risk between the two units', () => {
     expect(convertRisk(1, 'riskMoney', 100_000)).toBe(1000);
     expect(convertRisk(500, 'riskBalancePercent', 100_000)).toBe(0.5);
+  });
+});
+
+describe('partial exits: summary, scaling, adding a level (spec examples, Buy 100 AAPL @ 201.57)', () => {
+  const E = 201.57;
+  it('one level 100 · SL 197.50 · TP 211.00 → SL −407.00 · TP +943.00', () => {
+    const s = exitsSummary('buy', E, 100, [{ qty: 100, sl: 197.5, tp: 211 }], AAPL);
+    expect([s.sl, s.tp, s.levels, s.unprotectedQty, s.noStop]).toEqual([-407, 943, 1, 0, false]);
+  });
+  it('50 / 25 / 25 with TP 206 / 211 / 216, all SL 197.50 → SL −407.00 · TP up to +818.00 · 3 levels', () => {
+    const s = exitsSummary(
+      'buy',
+      E,
+      100,
+      [
+        { qty: 50, sl: 197.5, tp: 206 },
+        { qty: 25, sl: 197.5, tp: 211 },
+        { qty: 25, sl: 197.5, tp: 216 },
+      ],
+      AAPL,
+    );
+    expect([s.sl, s.tp, s.levels, s.protectedQty, s.unprotectedQty]).toEqual([-407, 818, 3, 100, 0]);
+  });
+  it('80 of 100 → SL −325.60 · TP +754.40 · 20 shares without SL/TP', () => {
+    const s = exitsSummary('buy', E, 100, [{ qty: 80, sl: 197.5, tp: 211 }], AAPL);
+    expect([s.sl, s.tp, s.unprotectedQty]).toEqual([-325.6, 754.4, 20]);
+  });
+  it('TP without any SL → "No stop loss", no SL total', () => {
+    const s = exitsSummary('buy', E, 100, [{ qty: 100, sl: null, tp: 211 }], AAPL);
+    expect([s.sl, s.tp, s.noStop]).toEqual([null, 943, true]);
+  });
+  it('Sell 100 @ 201.56 (Bid), SL 205.00, TP 195.00 → SL −344.00 · TP +656.00', () => {
+    const s = exitsSummary('sell', 201.56, 100, [{ qty: 100, sl: 205, tp: 195 }], AAPL);
+    expect([s.sl, s.tp]).toEqual([-344, 656]);
+  });
+  it('levels keep their shares when the order quantity changes; the leftover goes to Exit 1', () => {
+    expect(scaleLevels([0.5, 0.25, 0.25], 100, 1)).toEqual([50, 25, 25]);
+    expect(scaleLevels([0.5, 0.25, 0.25], 99, 1)).toEqual([51, 24, 24]); // floors 49 / 24 / 24 = 97, the total is 99 → +2 to Exit 1
+    expect(scaleLevels([0.5, 0.25, 0.25], 10, 1)).toEqual([6, 2, 2]); // 5 / 2 / 2 = 9, the total is 10 → Exit 1 gets 6
+    expect(scaleLevels([0.6, 0.2], 100, 1)).toEqual([60, 20]); // an unprotected 20% stays unprotected
+    expect(scaleLevels([0.5, 0.5], 99, 1)).toEqual([50, 49]);
+    // idempotent: the same total always gives the same levels
+    expect(scaleLevels([0.5, 0.25, 0.25], 99, 1)).toEqual(scaleLevels([0.5, 0.25, 0.25], 99, 1));
+  });
+  it('rows are sorted by take profit, nearest first (Buy ascending, Sell descending), no TP last', () => {
+    expect(sortLevelIndices('buy', [216, null, 206, 211])).toEqual([2, 3, 0, 1]);
+    expect(sortLevelIndices('sell', [190, 195, null, 185])).toEqual([1, 0, 3, 2]);
+  });
+  it('adding a level: 100 shares, TP 211.00 → Exit 1: 50 @ 211.00, Exit 2: 50 @ 220.43; SL copied', () => {
+    expect(nextLevel({ qty: 100, tp: 211, sl: 197.5 }, null, E, 1, 0.01)).toEqual({ newQty: 50, lastQty: 50, tp: 220.43, sl: 197.5 });
+    // a second step continues the series from the previous TP
+    expect(nextLevel({ qty: 50, tp: 220.43, sl: 197.5 }, 211, E, 1, 0.01)).toMatchObject({ newQty: 25, lastQty: 25, tp: 229.86 });
+    // odd quantity: the remainder stays with the last level
+    expect(nextLevel({ qty: 5, tp: 211, sl: null }, null, E, 1, 0.01)).toMatchObject({ newQty: 2, lastQty: 3, sl: null });
+    // no TP on the last level → none on the new one
+    expect(nextLevel({ qty: 10, tp: null, sl: 197.5 }, null, E, 1, 0.01)?.tp).toBeNull();
+    // fewer than 2 steps cannot be split
+    expect(nextLevel({ qty: 1, tp: 211, sl: null }, null, E, 1, 0.01)).toBeNull();
   });
 });

@@ -254,17 +254,17 @@ export function Sandbox() {
           </OrderSummary>
         </Cell>
         <Cell title="one exit">
-          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD' }]}>
+          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD', kind: 'sl' }]}>
             <SubmitButton side="buy" primary="Buy" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>
         <Cell title="two exits">
-          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD' }, { label: 'TP', amount: '+943.00 USD' }]}>
+          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD', kind: 'sl' }, { label: 'TP', amount: '+943.00 USD', kind: 'tp' }]}>
             <SubmitButton side="buy" primary="Buy" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>
         <Cell title="sell">
-          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD' }, { label: 'TP', amount: '+943.00 USD' }]}>
+          <OrderSummary parts={[{ label: 'SL', amount: '−407.00 USD', kind: 'sl' }, { label: 'TP', amount: '+943.00 USD', kind: 'tp' }]}>
             <SubmitButton side="sell" primary="Sell" secondary="100 AAPL · MKT" onClick={noop} />
           </OrderSummary>
         </Cell>

@@ -10,6 +10,7 @@ import {
   defaultRiskInput,
   floorToStep,
   marketRef,
+  nextLevel,
   type ExitKind,
   type ExitUnit,
   type OrderType,
@@ -26,10 +27,10 @@ import { CURRENT_RULES, NEW_RULES, deriveTicket, exitInputText } from './deriveT
 import { PRICE_COMMIT_MS, evaluatePriceStatus, statusPatch, submitCheck } from './priceField';
 
 export { NEW_EXIT_DEFAULT_PERCENT, exitInputText } from './deriveTicket';
-import type { ExitState, PartialState, PriceUnit, TicketState, TicketView } from './types';
+import type { ExitState, LevelState, PriceUnit, TicketState, TicketView } from './types';
 
-/** Level 1 plus this many partial exits. */
-export const MAX_PARTIALS = 4;
+/** Most levels a ticket can have. */
+export const MAX_LEVELS = 5;
 
 function defaultQty(spec: SymbolSpec): string {
   if (spec.assetClass === 'crypto') return spec.symbol.startsWith('BTC') ? '0.01' : '0.1';
@@ -54,7 +55,7 @@ function initialState(symbol: string, variant: PanelVariant = getVariant()): Tic
       tif: 'week',
       gtdDate: '',
       gtdTime: '',
-      partials: [],
+      levels: [],
       fillOutsideRth: false,
     };
   }
@@ -72,7 +73,7 @@ function initialState(symbol: string, variant: PanelVariant = getVariant()): Tic
     tif: 'week',
     gtdDate: '',
     gtdTime: '',
-    partials: [],
+    levels: [],
     fillOutsideRth: false,
   };
 }
@@ -93,20 +94,22 @@ type Actions = {
   checkPriceOnSubmit: () => boolean;
   /** ⇆ in the Limit / Stop price field: switch between an absolute price and a signed offset from Ask / Bid; keeps the order price. */
   setPriceUnit: (unit: PriceUnit, view: TicketView) => void;
-  /** Partial exits (Level 2+). A new level takes half of Level 1's shares and starts with Level 1's take profit / stop loss. */
-  addPartial: (view: TicketView) => void;
-  removePartial: (index: number) => void;
-  /** Restores a snapshot (Discard in the Exit levels panel). */
-  setPartials: (partials: PartialState[]) => void;
-  setPartialQty: (index: number, text: string) => void;
-  /** Shares ⇆ % of the position; keeps the quantity. */
-  setPartialQtyUnit: (index: number, unit: PartialState['qtyUnit'], view: TicketView) => void;
-  setPartialLeg: (index: number, kind: ExitKind, text: string) => void;
-  /** Level 1's leg from the Exit levels screen: a typed value switches it on, an empty one switches it off. */
-  setLevel1Leg: (kind: ExitKind, text: string) => void;
-  /** Deletes Level 1: the next level takes its place (its TP / SL become the main ones, its shares join Level 1's remainder). */
-  removeLevel1: () => void;
-  setPartialLegUnit: (index: number, kind: ExitKind, unit: ExitUnit, view: TicketView) => void;
+  /**
+   * "+ Add partial exit": the last level's shares are halved (rounded down, the rest stays with it), the new level copies
+   * its SL and puts its TP one step further. The first call turns the SL / TP fields into level 1. Returns the data index
+   * of the new level, or null when the shares cannot be split.
+   */
+  addLevel: (view: TicketView) => number | null;
+  /** Deletes a level; its shares go to the previous one in the list (the next one for the first). One level left → the SL / TP fields. */
+  removeLevel: (index: number, view: TicketView) => void;
+  /** Restores a snapshot (Discard in the level editor). */
+  setLevels: (levels: LevelState[]) => void;
+  /** Level shares typed by the user; the other levels keep their shares. 0 / empty leaves the level to be dropped by `pruneLevels`. */
+  setLevelQty: (index: number, text: string, view: TicketView) => void;
+  /** Drops levels with no shares; one level left → the SL / TP fields. */
+  pruneLevels: (view: TicketView) => void;
+  setLevelLeg: (index: number, kind: ExitKind, text: string) => void;
+  setLevelLegUnit: (index: number, kind: ExitKind, unit: ExitUnit, view: TicketView) => void;
   setGtdTime: (time: string) => void;
   /** Replace the whole TIF selection (GTD with date and time). */
   setGtd: (date: string, time: string) => void;
@@ -158,7 +161,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
         qtyInput: '',
         sl: { ...s.sl, enabled: false, input: '' },
         tp: { ...s.tp, enabled: false, input: '' },
-        partials: [],
+        levels: [],
       }));
       cancelPriceCommit();
       return;
@@ -196,58 +199,80 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     set({ priceUnit: unit, priceInput: text });
     logEvent('unit_change', { field: 'price', unit });
   },
-  addPartial: (view) => {
+  addLevel: (view) => {
     const s = get();
-    if (s.partials.length >= MAX_PARTIALS) return;
     const spec = getSpec(s.symbol);
-    // Half of Level 1's shares; when they cannot be split (1 share, no quantity yet) the field starts empty.
-    const half = floorToStep(view.level1Qty / 2, spec.qtyStep);
-    const leg = (kind: ExitKind) => ({ unit: s[kind].unit, input: s[kind].enabled ? view[kind].input : '' });
-    set({ partials: [...s.partials, { qtyInput: half >= spec.minQty ? half.toFixed(qtyPrecision(spec)) : '', qtyUnit: 'units', tp: leg('tp'), sl: leg('sl') }] });
-    logEvent('field_change', { field: 'partials', value: s.partials.length + 1 });
+    const units = view.qty.units;
+    if (s.levels.length >= MAX_LEVELS || !(units > 0) || view.levelEntry === null) return null;
+    const entry = view.levelEntry;
+    const price = (n: number | null) => (n === null ? '' : priceInput(n, spec));
+    // Single level: its SL / TP fields become level 1.
+    const single = s.levels.length === 0;
+    const base: LevelState[] = single
+      ? [{ frac: 1, tp: { unit: s.tp.unit, input: s.tp.enabled ? view.tp.input : '' }, sl: { unit: s.sl.unit, input: s.sl.enabled ? view.sl.input : '' } }]
+      : s.levels;
+    const qtys = single ? [units] : view.levels.map((l) => l.qty);
+    const tps = single ? [view.tp.enabled && view.tp.level && !view.tp.level.invalid ? view.tp.level.price : null] : view.levels.map((l) => (l.tp.level && !l.tp.level.invalid ? l.tp.level.price : null));
+    const sls = single ? [view.sl.enabled && view.sl.level && !view.sl.level.invalid ? view.sl.level.price : null] : view.levels.map((l) => (l.sl.level && !l.sl.level.invalid ? l.sl.level.price : null));
+    const order = single ? [0] : view.levelOrder;
+    const lastI = order[order.length - 1];
+    const prevTp = order.length > 1 ? tps[order[order.length - 2]] : null;
+    const next = nextLevel({ qty: qtys[lastI], tp: tps[lastI], sl: sls[lastI] }, prevTp, entry, spec.qtyStep, spec.tickSize);
+    if (!next) return null;
+    const levels = base.map((l, i) => (i === lastI ? { ...l, frac: next.lastQty / units } : l));
+    // The new level's legs are prices (SL copied from the last level; TP one step further).
+    levels.push({ frac: next.newQty / units, tp: { unit: 'price', input: price(next.tp) }, sl: { unit: 'price', input: price(next.sl) } });
+    set({ levels });
+    logEvent('field_change', { field: 'levels', value: levels.length });
+    return levels.length - 1;
   },
-  removePartial: (index) => {
-    set((s) => ({ partials: s.partials.filter((_, i) => i !== index) }));
-    logEvent('field_change', { field: 'partials', value: get().partials.length });
-  },
-  setPartials: (partials) => set({ partials }),
-  setLevel1Leg: (kind, text) => {
-    set((s) => ({ [kind]: { ...s[kind], input: text, enabled: text.trim() !== '', touched: true } }) as Partial<TicketState>);
-    logFieldChange(`level1${kind}`, text);
-  },
-  removeLevel1: () => {
+  removeLevel: (index, view) => {
     const s = get();
-    const next = s.partials[0];
-    if (!next) return;
-    const leg = (kind: ExitKind): ExitState => ({ enabled: next[kind].input.trim() !== '', unit: next[kind].unit, input: next[kind].input, touched: true });
-    set({ tp: leg('tp'), sl: leg('sl'), partials: s.partials.slice(1) });
-    logEvent('field_change', { field: 'partials', value: s.partials.length });
+    if (!s.levels[index]) return;
+    const order = view.levelOrder;
+    const pos = order.indexOf(index);
+    const neighbour = order[pos - 1] ?? order[pos + 1];
+    const levels = s.levels
+      .map((l, i) => (i === neighbour ? { ...l, frac: l.frac + s.levels[index].frac } : l))
+      .filter((_, i) => i !== index);
+    set({ levels });
+    get().pruneLevels({ ...view, levels: view.levels.filter((_, i) => i !== index) });
+    logEvent('field_change', { field: 'levels', value: levels.length });
   },
-  setPartialQty: (index, text) => {
-    set((s) => ({ partials: s.partials.map((p, i) => (i === index ? { ...p, qtyInput: text } : p)) }));
-    logFieldChange(`partial${index + 2}Qty`, text);
-  },
-  setPartialQtyUnit: (index, unit, view) => {
+  setLevels: (levels) => set({ levels }),
+  setLevelQty: (index, text, view) => {
     const s = get();
-    const p = s.partials[index];
-    if (!p || p.qtyUnit === unit) return;
-    const v = view.partials[index];
+    const units = view.qty.units;
+    if (!(units > 0) || !s.levels[index]) return;
+    const n = parseNum(text);
     const spec = getSpec(s.symbol);
-    const text = !v || !(v.qty > 0) ? '' : unit === 'units' ? v.qty.toFixed(qtyPrecision(spec)) : v.percent.toFixed(2);
-    set({ partials: s.partials.map((x, i) => (i === index ? { ...x, qtyUnit: unit, qtyInput: text } : x)) });
+    const typed = Number.isFinite(n) && n > 0 ? floorToStep(n, spec.qtyStep) : 0;
+    // The other levels keep the shares they show now; only this one changes.
+    set({ levels: s.levels.map((l, i) => ({ ...l, frac: (i === index ? typed : view.levels[i].qty) / units })) });
+    logFieldChange(`level${index + 1}Qty`, text);
   },
-  setPartialLeg: (index, kind, text) => {
-    set((s) => ({ partials: s.partials.map((p, i) => (i === index ? { ...p, [kind]: { ...p[kind], input: text } } : p)) }));
-    logFieldChange(`partial${index + 2}${kind}`, text);
-  },
-  setPartialLegUnit: (index, kind, unit, view) => {
+  pruneLevels: (view) => {
     const s = get();
-    const p = s.partials[index];
-    if (!p || p[kind].unit === unit) return;
-    const lvl = view.partials[index]?.[kind].level;
+    const keep = s.levels.filter((_, i) => (view.levels[i]?.qty ?? 1) > 0);
+    if (keep.length === s.levels.length && keep.length >= 2) return;
+    if (keep.length >= 2) return set({ levels: keep });
+    // One level (or none) left: back to the SL / TP fields with that level's values.
+    const only = keep[0];
+    const leg = (kind: ExitKind): ExitState => ({ enabled: !!only && only[kind].input.trim() !== '', unit: only ? only[kind].unit : s[kind].unit, input: only ? only[kind].input : '', touched: true });
+    set({ levels: [], ...(only ? { tp: leg('tp'), sl: leg('sl') } : {}) });
+  },
+  setLevelLeg: (index, kind, text) => {
+    set((s) => ({ levels: s.levels.map((l, i) => (i === index ? { ...l, [kind]: { ...l[kind], input: text } } : l)) }));
+    logFieldChange(`level${index + 1}${kind}`, text);
+  },
+  setLevelLegUnit: (index, kind, unit, view) => {
+    const s = get();
+    const l = s.levels[index];
+    if (!l || l[kind].unit === unit) return;
+    const lvl = view.levels[index]?.[kind].level;
     const text = lvl && !lvl.invalid ? exitInputText(lvl, unit, getSpec(s.symbol)) : '';
-    set({ partials: s.partials.map((x, i) => (i === index ? { ...x, [kind]: { unit, input: text } } : x)) });
-    logEvent('unit_change', { field: `partial${index + 2}${kind}`, unit });
+    set({ levels: s.levels.map((x, i) => (i === index ? { ...x, [kind]: { unit, input: text } } : x)) });
+    logEvent('unit_change', { field: `level${index + 1}${kind}`, unit });
   },
   setGtdTime: (gtdTime) => {
     set({ gtdTime });
@@ -326,6 +351,16 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
         const input = lvl && !lvl.invalid ? exitInputText(lvl, 'price', spec) : '';
         set({ sl: { ...ex, unit: 'price', input } });
       }
+      // The same for the stop losses of the levels.
+      if (s.levels.some((l) => l.sl.unit === 'money' || l.sl.unit === 'balancePercent')) {
+        set({
+          levels: s.levels.map((l, i) => {
+            if (l.sl.unit !== 'money' && l.sl.unit !== 'balancePercent') return l;
+            const lvl = view.levels[i]?.sl.level;
+            return { ...l, sl: { unit: 'price', input: lvl && !lvl.invalid ? exitInputText(lvl, 'price', spec) : '' } };
+          }),
+        });
+      }
     }
     // Redesign: risk sizing needs a stop loss — switch it on with its placeholder (the last value, else −2% from entry).
     if (getVariant() === 'new' && toRisk && !get().sl.enabled) get().setExitEnabled('sl', true, view);
@@ -338,7 +373,7 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     set({ [kind]: { ...s[kind], enabled, input, touched: true } } as Partial<TicketState>);
     logEvent('toggle_change', { field: kind, enabled });
   },
-  clearQty: () => set({ qtyInput: '', partials: [] }),
+  clearQty: () => set({ qtyInput: '', levels: [] }),
   setExitInput: (kind, text) => {
     set((s) => ({ [kind]: { ...s[kind], input: text, touched: true } }) as Partial<TicketState>);
     logFieldChange(kind, text);

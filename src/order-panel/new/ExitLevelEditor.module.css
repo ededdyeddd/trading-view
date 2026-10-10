@@ -234,3 +234,18 @@
 .discard:hover {
   background: var(--nt-fill-extra-light);
 }
+
+.removeLevel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 18px;
+  letter-spacing: var(--nt-tracking-14);
+  color: var(--nt-text-secondary);
+}
+
+.removeLevel:hover {
+  color: var(--nt-text-danger);
+}

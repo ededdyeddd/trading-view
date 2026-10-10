@@ -681,25 +681,52 @@ export function SubmitButton({ side, primary, secondary, disabled, loading, onCl
   );
 }
 
-/** Pinned footer: optional summary ("SL −407.00 USD · TP +943.00 USD", coloured labels) wrapping the submit button. */
+/**
+ * Pinned footer: optional summary ("SL −407.00 USD · TP up to +818.00 USD · 3 exits", coloured labels, orange warnings)
+ * wrapping the submit button. One line; when it does not fit "N exits" goes first, then the line wraps (numbers and
+ * warnings are never cut).
+ */
 export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null; children: ReactNode }) {
+  const lineRef = useRef<HTMLDivElement>(null);
+  const [hideExits, setHideExits] = useState(false);
+  const key = parts?.map((p) => `${p.label}${p.prefix}${p.amount}`).join('|') ?? '';
+  // Measure with every segment shown; if the line overflows drop the exits segment.
+  useLayoutEffect(() => {
+    const el = lineRef.current;
+    if (!el) return;
+    const measure = () => {
+      const probe = el.querySelector<HTMLElement>('[data-full-line]');
+      if (probe) setHideExits(probe.scrollWidth > el.clientWidth + 0.5);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [key]);
   if (!parts || parts.length === 0) return <>{children}</>;
+  const shown = hideExits ? parts.filter((p) => p.kind !== 'exits') : parts;
+  const line = (list: SummaryPart[]) =>
+    list.map((p, i) => (
+      <span key={`${p.kind}${i}`} className={s.summarySeg}>
+        {i > 0 && <span className={s.summarySep}> · </span>}
+        {p.label ? (
+          <>
+            <span className={p.label === 'SL' ? s.summaryLabelSl : s.summaryLabelTp}>{p.label}</span>
+            <span className={s.summaryAmount}>{p.prefix ? ` ${p.prefix}` : ''} {p.amount}</span>
+          </>
+        ) : (
+          <span className={p.kind === 'warning' ? s.summaryWarning : s.summaryAmount}>{p.amount}</span>
+        )}
+      </span>
+    ));
   return (
     <div className={s.footerBlock}>
-      <div className={s.summary} data-testid="nt-summary">
-        {parts.map((p, i) => (
-          <span key={`${p.label}${i}`}>
-            {i > 0 && <span className={s.summarySep}> · </span>}
-            {p.label ? (
-              <>
-                <span className={p.label === 'SL' ? s.summaryLabelSl : s.summaryLabelTp}>{p.label}</span>
-                <span className={s.summaryAmount}>{p.prefix ? ` ${p.prefix}` : ''} {p.amount}</span>
-              </>
-            ) : (
-              <span className={s.summarySep}>{p.amount}</span>
-            )}
-          </span>
-        ))}
+      <div ref={lineRef} className={s.summary}>
+        {/* invisible single-line probe of the full text */}
+        <span className={s.summaryProbe} data-full-line aria-hidden>
+          {line(parts)}
+        </span>
+        <span data-testid="nt-summary">{line(shown)}</span>
       </div>
       {children}
     </div>
@@ -708,15 +735,15 @@ export function OrderSummary({ parts, children }: { parts: SummaryPart[] | null;
 
 // ---------------------------------------------------------------------------
 
-/** "Protected size · 100.00%" with a bar (green at 100%, orange below). */
-export function ExitProgress({ label, percent }: { label: string; percent: number }) {
+/** "Protected size · 100%" with a bar (green at 100%, orange below). */
+export function ExitProgress({ label, percent, percentText }: { label: string; percent: number; percentText: string }) {
   const full = percent >= 99.995;
   return (
     <div className={s.progress} data-testid="nt-protected">
       <div className={s.progressLegend}>
         <span>{label}</span>
-        <span className={s.progressDot}>∙</span>
-        <span data-testid="nt-protected-value">{`${percent.toFixed(2)}%`}</span>
+        <span className={s.progressDot}>·</span>
+        <span data-testid="nt-protected-value">{percentText}</span>
       </div>
       <div className={s.progressTrack} role="progressbar" aria-label={label} aria-valuenow={Math.round(percent)}>
         <div className={cx(s.progressBar, !full && s.progressBarPartial)} style={{ width: `${Math.min(100, percent)}%` }} />
@@ -725,40 +752,39 @@ export function ExitProgress({ label, percent }: { label: string; percent: numbe
   );
 }
 
-export type LevelLeg = { label: 'TP' | 'SL'; text: string };
+export type LevelPart = { label: 'TP' | 'SL'; text: string; tone: 'normal' | 'off' | 'error' };
 
-/** "Level 2 ∙ 25%" over a pill "TP 25 @ 211.00 ∙ SL 25 @ 197.50" with a trash button; the pill opens the Exit levels screen. */
+/** "Exit 2 · 25 shares · 25%" over a pill "TP 25 @ 211.00 · SL 25 @ 197.50" with a trash button; the pill opens the level editor. */
 export function LevelRow({
   title,
-  legs,
+  parts,
   onOpen,
   onRemove,
   testId,
-  bare,
 }: {
-  /** Hide the title line (the caller renders its own heading). */
-  bare?: boolean;
   title: string;
-  legs: LevelLeg[];
+  parts: LevelPart[];
   onOpen: () => void;
   onRemove: () => void;
   testId: string;
 }) {
   return (
     <div className={s.levelRow} data-testid={testId}>
-      {!bare && <div className={s.levelTitle}>{title}</div>}
+      <div className={s.levelTitle} data-testid={`${testId}-title`}>
+        {title}
+      </div>
       <div className={s.levelPill}>
         <button type="button" className={s.levelBody} onClick={onOpen} data-testid={`${testId}-open`}>
-          {legs.length === 0 && <span className={s.levelNone}>No exits</span>}
-          {legs.map((l, i) => (
-            <span key={l.label}>
-              {i > 0 && <span className={s.levelDot}> ∙ </span>}
-              <span className={l.label === 'TP' ? s.levelTp : s.levelSl}>{l.label}</span> {l.text}
+          {parts.map((p, i) => (
+            <span key={p.label} className={p.tone === 'error' ? s.levelError : undefined}>
+              {i > 0 && <span className={s.levelDot}> · </span>}
+              <span className={p.tone === 'error' ? undefined : p.label === 'TP' ? s.levelTp : s.levelSl}>{p.label}</span>{' '}
+              <span className={p.tone === 'off' && p.label === 'SL' ? s.levelSl : undefined}>{p.text}</span>
             </span>
           ))}
         </button>
         <span className={s.levelDivider} />
-        <button type="button" className={s.levelTrash} aria-label={`Remove ${title.split(' ∙')[0]}`} onClick={onRemove} data-testid={`${testId}-remove`}>
+        <button type="button" className={s.levelTrash} aria-label={`Remove ${title.split(' · ')[0]}`} onClick={onRemove} data-testid={`${testId}-remove`}>
           <Trash2 size={18} strokeWidth={1.3} />
         </button>
       </div>

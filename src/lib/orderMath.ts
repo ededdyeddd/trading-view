@@ -390,3 +390,80 @@ export function convertRisk(value: number, to: 'riskMoney' | 'riskBalancePercent
   if (!(balance > 0)) return 0;
   return to === 'riskMoney' ? (value * balance) / 100 : (value / balance) * 100;
 }
+
+// ---------------------------------------------------------------------------
+// Partial exits (levels): quantities, summary, adding a level
+// ---------------------------------------------------------------------------
+
+/** A level as the summary sees it: shares with an optional take profit and stop loss (prices). */
+export type ExitsLevel = { qty: number; tp: number | null; sl: number | null };
+
+/**
+ * Quantities of the levels for an order quantity: every level keeps its share (`fracs`, of the order), rounded down to
+ * the step; the rounding leftover of the total goes to Exit 1 (the first level). Pure in (fracs, total), so a floating
+ * order quantity never drifts the levels.
+ */
+export function scaleLevels(fracs: number[], total: number, qtyStep: number): number[] {
+  const qtys = fracs.map((f) => floorToStep(Math.max(0, f) * total, qtyStep));
+  const target = floorToStep(fracs.reduce((a, f) => a + Math.max(0, f), 0) * total, qtyStep);
+  const rest = Number((target - qtys.reduce((a, q) => a + q, 0)).toFixed(10));
+  if (qtys.length && rest > 0) qtys[0] = Number((qtys[0] + rest).toFixed(10));
+  return qtys;
+}
+
+/** Levels sorted by take profit from the nearest to the entry to the farthest (Buy ascending, Sell descending); no TP last. Returns indices. */
+export function sortLevelIndices(side: Side, tps: (number | null)[]): number[] {
+  const dir = sideSign(side);
+  return tps
+    .map((tp, i) => ({ tp, i }))
+    .sort((a, b) => {
+      if (a.tp === null || b.tp === null) return a.tp === b.tp ? a.i - b.i : a.tp === null ? 1 : -1;
+      return (a.tp - b.tp) * dir || a.i - b.i;
+    })
+    .map((x) => x.i);
+}
+
+/** New level after "+ Add partial exit": the last level's shares halved (rounded down, the rest stays), its SL, TP one step further. */
+export function nextLevel(last: ExitsLevel, prevTp: number | null, entry: number, qtyStep: number, tickSize: number): { newQty: number; lastQty: number; tp: number | null; sl: number | null } | null {
+  if (!(last.qty >= 2 * qtyStep - 1e-9)) return null;
+  const newQty = floorToStep(last.qty / 2, qtyStep);
+  const from = prevTp ?? entry;
+  return { newQty, lastQty: Number((last.qty - newQty).toFixed(10)), tp: last.tp === null ? null : roundToTick(last.tp + (last.tp - from), tickSize), sl: last.sl };
+}
+
+export type ExitsSummary = {
+  /** Total loss at the stops (≤ 0) / total profit at the take profits (≥ 0), account currency; null without any. */
+  sl: number | null;
+  tp: number | null;
+  levels: number;
+  slCount: number;
+  tpCount: number;
+  protectedQty: number;
+  /** Shares of the order that no level covers. */
+  unprotectedQty: number;
+  /** Take profits exist but no level has a stop loss. */
+  noStop: boolean;
+};
+
+/** Totals over the levels: summed before rounding, then rounded to 2 decimals. */
+export function exitsSummary(side: Side, entry: number, orderQty: number, levels: ExitsLevel[], spec: Spec): ExitsSummary {
+  const dir = sideSign(side);
+  const per = moneyPerPoint(1, spec, entry);
+  const sum = (key: 'sl' | 'tp') => {
+    const ls = levels.filter((l) => l[key] !== null);
+    return ls.length ? round2(ls.reduce((a, l) => a + l.qty * ((l[key] as number) - entry) * dir * per, 0)) : null;
+  };
+  const protectedQty = Number(levels.reduce((a, l) => a + l.qty, 0).toFixed(10));
+  const slCount = levels.filter((l) => l.sl !== null).length;
+  const tpCount = levels.filter((l) => l.tp !== null).length;
+  return {
+    sl: sum('sl'),
+    tp: sum('tp'),
+    levels: levels.length,
+    slCount,
+    tpCount,
+    protectedQty,
+    unprotectedQty: Math.max(0, Number((orderQty - protectedQty).toFixed(10))),
+    noStop: tpCount > 0 && slCount === 0,
+  };
+}

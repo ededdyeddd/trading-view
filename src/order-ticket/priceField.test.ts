@@ -24,7 +24,7 @@ function st(p: Partial<TicketState> = {}): TicketState {
     tif: 'week',
     gtdDate: '',
     gtdTime: '',
-    partials: [],
+    levels: [],
     fillOutsideRth: false,
     ...p,
   };

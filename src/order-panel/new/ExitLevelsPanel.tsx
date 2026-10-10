@@ -1,4 +1,5 @@
 import { ChevronLeft, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
 import { pricePrecision, qtyPrecision } from '../../config/symbols';
 import { fmtNumber } from '../../lib/format';
 import type { ExitKind, ExitLevel, ExitUnit } from '../../lib/orderMath';
@@ -14,13 +15,14 @@ import {
   exitUnitInfo,
   exitUnitLabel,
   formatExitInput,
+  level1Parts,
   levelHeadingText,
   levelMenuValue,
   levelText,
   orderTitleText,
   riskRewardText,
 } from './presenters';
-import { FieldCaption, FieldLabelMenu, TextButton, ValueField } from './ui/atoms';
+import { FieldCaption, FieldLabelMenu, LevelRow, TextButton, ValueField } from './ui/atoms';
 
 const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
@@ -39,6 +41,8 @@ type Props = {
 export function ExitLevelsPanel({ ticket, snapshot, onClose }: Props) {
   const { state, view, slowView, spec } = ticket;
   const t = useTicketStore.getState();
+  /** Level 1 is a line; its fields open on a click. */
+  const [open1, setOpen1] = useState(false);
   const discard = () => {
     t.setPartials(snapshot);
     onClose();
@@ -183,6 +187,15 @@ export function ExitLevelsPanel({ ticket, snapshot, onClose }: Props) {
         <div className={styles.levelHead}>
           <span className={styles.muted}>{levelHeadingText(0, level1Percent)}</span>
         </div>
+        <LevelRow
+          testId="nt-lvl1"
+          title="Level 1"
+          bare
+          legs={level1Parts(view, spec)}
+          onOpen={() => setOpen1((v) => !v)}
+          onRemove={() => (state.partials.length ? t.removeLevel1() : undefined)}
+        />
+        {open1 && (
         <div className={styles.card} data-testid="nt-level-1">
           <div className={styles.field}>
             <div className={styles.label}>
@@ -203,6 +216,7 @@ export function ExitLevelsPanel({ ticket, snapshot, onClose }: Props) {
           {leg1('tp')}
           {leg1('sl')}
         </div>
+        )}
 
         {state.partials.map((p, i) => {
           const v = view.partials[i];
@@ -233,7 +247,7 @@ export function ExitLevelsPanel({ ticket, snapshot, onClose }: Props) {
                     ariaLabel={`Level ${i + 2} shares`}
                     testId={`nt-level-${i + 2}-qty`}
                   />
-                  {v.qtyError && p.qtyInput.trim() !== '' && <FieldCaption tone="error">{v.qtyError}</FieldCaption>}
+                  {v.qtyError && <FieldCaption tone={p.qtyInput.trim() !== '' ? 'error' : 'neutral'}>{v.qtyError}</FieldCaption>}
                 </div>
                 {leg('tp', i)}
                 {leg('sl', i)}

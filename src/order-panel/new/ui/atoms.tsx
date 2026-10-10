@@ -734,7 +734,10 @@ export function LevelRow({
   onOpen,
   onRemove,
   testId,
+  bare,
 }: {
+  /** Hide the title line (the caller renders its own heading). */
+  bare?: boolean;
   title: string;
   legs: LevelLeg[];
   onOpen: () => void;
@@ -743,7 +746,7 @@ export function LevelRow({
 }) {
   return (
     <div className={s.levelRow} data-testid={testId}>
-      <div className={s.levelTitle}>{title}</div>
+      {!bare && <div className={s.levelTitle}>{title}</div>}
       <div className={s.levelPill}>
         <button type="button" className={s.levelBody} onClick={onOpen} data-testid={`${testId}-open`}>
           {legs.length === 0 && <span className={s.levelNone}>No exits</span>}

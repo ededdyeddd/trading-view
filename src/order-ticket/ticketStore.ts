@@ -200,9 +200,10 @@ export const useTicketStore = create<TicketState & Actions>((set, get) => ({
     const s = get();
     if (s.partials.length >= MAX_PARTIALS) return;
     const spec = getSpec(s.symbol);
-    const half = Math.max(spec.minQty, floorToStep(view.level1Qty / 2, spec.qtyStep));
+    // Half of Level 1's shares; when they cannot be split (1 share, no quantity yet) the field starts empty.
+    const half = floorToStep(view.level1Qty / 2, spec.qtyStep);
     const leg = (kind: ExitKind) => ({ unit: s[kind].unit, input: s[kind].enabled ? view[kind].input : '' });
-    set({ partials: [...s.partials, { qtyInput: half.toFixed(qtyPrecision(spec)), qtyUnit: 'units', tp: leg('tp'), sl: leg('sl') }] });
+    set({ partials: [...s.partials, { qtyInput: half >= spec.minQty ? half.toFixed(qtyPrecision(spec)) : '', qtyUnit: 'units', tp: leg('tp'), sl: leg('sl') }] });
     logEvent('field_change', { field: 'partials', value: s.partials.length + 1 });
   },
   removePartial: (index) => {

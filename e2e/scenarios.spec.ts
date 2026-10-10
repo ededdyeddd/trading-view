@@ -320,8 +320,10 @@ test.describe('new · partial exits (Exit levels screen), frozen AAPL 201.56 / 2
 
     await expect(page.getByTestId('exit-levels')).toBeVisible();
     await expect(page.getByTestId('nt-levels-order')).toHaveText('Buy Market 100 @ 201.57');
-    await expect(page.getByTestId('nt-l1-qty')).toHaveValue('50.00'.replace('.00', ''));
     await expect(page.getByTestId('nt-level-2-qty')).toHaveValue('50');
+    await expect(page.getByTestId('nt-level-1')).toHaveCount(0); // Level 1 is a line until opened
+    await page.getByTestId('nt-lvl1-open').click();
+    await expect(page.getByTestId('nt-l1-qty')).toHaveValue('50');
     // Level 2: 40 shares, its own TP / SL; Level 1 keeps 60
     await page.getByTestId('nt-level-2-qty').fill('40');
     await expect(page.getByTestId('nt-l1-qty')).toHaveValue('60');
@@ -343,6 +345,20 @@ test.describe('new · partial exits (Exit levels screen), frozen AAPL 201.56 / 2
     expect(orders).toContainEqual(['tp', 40, 203]);
     expect(orders).toContainEqual(['sl', 40, 198]);
     expect(orders.filter((o: [string, number]) => o[1] === 60)).toHaveLength(2);
+  });
+
+  test('"Add partial exit" is available with any SL / TP on, also with 1 share: Level 2 starts with empty shares', async ({ page }) => {
+    await openFrozen(page);
+    await page.getByTestId('nt-type-market').click();
+    await page.getByTestId('nt-qty').fill('1');
+    await expect(page.getByTestId('nt-partial-exit')).toHaveCount(0); // no SL / TP on
+    await page.getByTestId('nt-sl-toggle').click(); // an SL alone is enough
+    await expect(page.getByTestId('nt-partial-exit')).not.toHaveAttribute('aria-disabled', 'true');
+    await page.getByTestId('nt-partial-exit').click();
+    await expect(page.getByTestId('nt-level-2-qty')).toHaveValue('');
+    await expect(page.getByTestId('nt-levels-confirm')).toBeDisabled();
+    await page.getByTestId('nt-levels-discard').click();
+    await expect(page.getByTestId('nt-sl-input')).toBeVisible();
   });
 
   test('trash on a level removes it; trash on Level 1 promotes the next level; the last trash brings back the SL / TP fields', async ({ page }) => {

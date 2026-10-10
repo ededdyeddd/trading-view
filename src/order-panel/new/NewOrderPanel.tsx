@@ -383,12 +383,12 @@ export function NewOrderPanel({ ticket }: { ticket: OrderTicket }) {
                       )}
                     </>
                   )}
-                  {(state.tp.enabled || state.partials.length > 0) && (
+                  {(state.sl.enabled || state.tp.enabled || state.partials.length > 0) && (
                     <div className={`${styles.addLevel} ${state.partials.length > 0 ? styles.addLevelAfterLevels : view.riskReward === null ? styles.addLevelAlone : ''}`}>
                       <TextButton
                         onClick={() => openLevels(true)}
-                        disabled={!(view.qty.units > 0 && view.level1Qty >= 2 * spec.minQty) || state.partials.length >= MAX_PARTIALS}
-                        disabledReason={state.partials.length >= MAX_PARTIALS ? 'Maximum number of levels' : 'Enter a quantity of at least 2 to split the exit'}
+                        disabled={state.partials.length >= MAX_PARTIALS}
+                        disabledReason="Maximum number of levels"
                         testId="nt-partial-exit"
                       >
                         Add partial exit

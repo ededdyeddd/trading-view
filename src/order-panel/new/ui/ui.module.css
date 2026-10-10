@@ -467,7 +467,7 @@
 
 .infoLabel {
   flex: 1;
-  color: var(--nt-text-secondary);
+  color: var(--nt-text); /* Figma 4135:141479: label is neutral-bold, not grey */
 }
 
 .infoValue {

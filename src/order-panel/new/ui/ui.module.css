@@ -464,10 +464,9 @@
   outline: none;
 }
 
-.fieldAction:hover,
-.fieldAction:focus-visible {
-  background: var(--nt-fill-hover);
-  color: var(--nt-summary-amount);
+/* like the other fields: hover changes the border only — not the fill, not the text colour */
+.fieldAction:hover {
+  box-shadow: inset 0 0 0 1px var(--nt-border-hover);
 }
 
 .fieldAction:focus-visible {

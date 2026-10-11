@@ -72,7 +72,7 @@ export function priceLabel(type: OrderType, unit: PriceUnit = 'price', side: Sid
 
 /** Tooltip of the ⇆ in the price field: what a click switches to. */
 export function priceSwapLabel(unit: PriceUnit, side: Side): string {
-  return unit === 'price' ? `Enter as offset from ${side === 'buy' ? 'Ask' : 'Bid'}` : 'Enter as price';
+  return unit === 'price' ? `Switch to offset from ${side === 'buy' ? 'Ask' : 'Bid'}` : 'Switch to price';
 }
 
 /** "Ask − 2.57", "Bid + 3.44", "Ask" when equal (`offset` defaults to the entered price's). */
@@ -187,9 +187,9 @@ export function qtyUnitInfo(unit: QtyUnit, spec: SymbolSpec): string | undefined
     case 'balancePercent':
       return 'Position value as % of balance';
     case 'riskMoney':
-      return `${spec.qtyLabel} × distance to SL`;
     case 'riskBalancePercent':
-      return 'Risk as % of balance';
+      // TradingView's own wording for both risk units.
+      return 'Turns on stop loss to show risk calculated from your chosen order size';
   }
 }
 

@@ -251,13 +251,13 @@ test.describe('new · price field defaults and validation (frozen AAPL 201.56 / 
     const label = page.getByTestId('nt-price-label');
     const swap = page.getByTestId('nt-price-swap');
     await expect(label).toHaveText('Limit price');
-    await expect(swap).toHaveAttribute('title', 'Enter as offset from Ask');
+    await expect(swap).toHaveAttribute('title', 'Switch to offset from Ask');
     await price(page).fill('199.00');
     await swap.click();
     await expect(label).toHaveText('Offset from Ask');
     await expect(price(page)).toHaveValue('−2.57');
     await expect(page.getByTestId('order-panel')).toContainText('199.00');
-    await expect(swap).toHaveAttribute('title', 'Enter as price');
+    await expect(swap).toHaveAttribute('title', 'Switch to price');
     await price(page).fill('-3');
     await expect(page.getByTestId('order-panel')).toContainText('198.57');
     await swap.click();
@@ -549,12 +549,17 @@ test.describe('new · switched-off SL / TP read "Set at {value}" (FR-6.3, frozen
     await expect(page.getByTestId('nt-sl').locator('input, [data-testid$="-caption"]')).toHaveCount(0);
   });
 
-  test('2 · hover: main text colour and the text cursor', async ({ page }) => {
+  test('2 · hover: only the border changes (no fill or text colour), text cursor', async ({ page }) => {
     await openMarket(page);
     const color = () => sl(page).evaluate((el) => getComputedStyle(el).color);
     expect(await color()).toBe('rgb(112, 112, 112)');
     await sl(page).hover();
-    expect(await color()).toBe('rgb(19, 23, 34)');
+    expect(await color()).toBe('rgb(112, 112, 112)');
+    // hover changes the border, not the fill
+    const fill = () => sl(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+    const idle = await page.getByTestId('nt-tp-input').evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(await fill()).toBe(idle);
+    expect(await sl(page).evaluate((el) => getComputedStyle(el).boxShadow)).toContain('rgb(184, 184, 184)');
     expect(await sl(page).evaluate((el) => getComputedStyle(el).cursor)).toBe('text');
   });
 

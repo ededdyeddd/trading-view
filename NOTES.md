@@ -294,3 +294,4 @@ The spec pasted on 10 Oct changed the model; where it differs from the earlier s
 - The market-closed time is now the exchange's: "Mon 9:30 AM ET" (was the user's local 24 h time). For stocks only; other classes are never closed here.
 - Log: `informer_shown` (kind, code, field) once per change, `informer_click`.
 - The status icon (≈ → Figma wave) is a separate, still uncommitted change.
+- Hover on a switched-off SL / TP field changes only the border; text colour and fill stay (the 10 Oct prompt said main text colour on the hover fill — changed at the user's request).

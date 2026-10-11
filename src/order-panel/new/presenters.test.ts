@@ -243,9 +243,9 @@ describe('Block 1. Limit Price', () => {
       'Offset from Bid',
     ]);
     expect([priceSwapLabel('price', 'buy'), priceSwapLabel('price', 'sell'), priceSwapLabel('offset', 'buy')]).toEqual([
-      'Enter as offset from Ask',
-      'Enter as offset from Bid',
-      'Enter as price',
+      'Switch to offset from Ask',
+      'Switch to offset from Bid',
+      'Switch to price',
     ]);
   });
   it('a positive offset is above the market; typed with a hyphen or U+2212', () => {
@@ -569,8 +569,8 @@ describe('Unit menus: live values (PRD table)', () => {
     ['qty', 'units', '100', '100', undefined],
     ['qty', 'value', '20,157.00', '19,900.00', 'Shares × entry price'],
     ['qty', 'balancePercent', '20.17%', '19.91%', 'Position value as % of balance'],
-    ['qty', 'riskMoney', '407.00', '400.00', 'Shares × distance to SL'],
-    ['qty', 'riskBalancePercent', '0.41%', '0.40%', 'Risk as % of balance'],
+    ['qty', 'riskMoney', '407.00', '400.00', 'Turns on stop loss to show risk calculated from your chosen order size'],
+    ['qty', 'riskBalancePercent', '0.41%', '0.40%', 'Turns on stop loss to show risk calculated from your chosen order size'],
     ['sl', 'price', '197.50', '195.00', undefined],
     ['sl', 'ticks', '407', '400', 'Distance from entry in ticks'],
     ['sl', 'percent', '2.02%', '2.01%', 'Distance from entry as % of price'],

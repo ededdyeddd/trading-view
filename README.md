@@ -2,6 +2,12 @@
 
 An interactive copy of the TradingView chart page in Paper Trading mode, built as the base for a usability test of a redesigned order panel. It has live quotes, a chart, order execution, positions and P&L.
 
+## Live demo
+
+https://ededdyeddd.github.io/trading-view/ — password: `trading-view-test-task`
+
+Deployed to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`). The new order panel is the default there; add `?panel=current` for the old one.
+
 ## Running
 
 ```bash

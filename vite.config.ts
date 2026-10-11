@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  base: './', // relative, so it works under github.io/<repo>/
   // Playwright specs live in e2e/ and run with `npm run e2e`.
   test: { exclude: ['e2e/**', 'node_modules/**'] },
 })
